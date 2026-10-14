@@ -1,9 +1,6 @@
 import io
 import os
 from groq import Groq
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 import streamlit as st
 
 # Configuración inicial de la página
@@ -49,8 +46,6 @@ i18n_ui = {
             "Seleccioná el idioma para tu Reporte PDF completo:"
         ),
         "btn_full_report": "💳 Pagar $19 USD y Descargar PDF",
-        "success_pdf": "¡Reporte PDF generado con éxito!",
-        "download_pdf_btn": "📥 Descargar Reporte en PDF",
         "terms": "Términos y Condiciones",
         "privacy": "Política de Privacidad",
         "error_url": "Por favor, ingresá una URL válida.",
@@ -77,8 +72,6 @@ i18n_ui = {
         ),
         "report_lang_label": "Select the language for your full PDF report:",
         "btn_full_report": "💳 Pay $19 USD & Download PDF",
-        "success_pdf": "PDF report generated successfully!",
-        "download_pdf_btn": "📥 Download PDF Report",
         "terms": "Terms of Service",
         "privacy": "Privacy Policy",
         "error_url": "Please enter a valid URL.",
@@ -108,8 +101,6 @@ i18n_ui = {
             "Selecione o idioma para o seu relatório PDF completo:"
         ),
         "btn_full_report": "💳 Pagar $19 USD e Baixar PDF",
-        "success_pdf": "Relatório PDF gerado com sucesso!",
-        "download_pdf_btn": "📥 Baixar Relatório em PDF",
         "terms": "Termos de Serviço",
         "privacy": "Política de Privacidade",
         "error_url": "Por favor, insira um URL válido.",
@@ -140,8 +131,6 @@ i18n_ui = {
             "Seleziona la lingua per il tuo rapporto PDF completo:"
         ),
         "btn_full_report": "💳 Paga $19 USD e Scarica il PDF",
-        "success_pdf": "Rapporto PDF generato con successo!",
-        "download_pdf_btn": "📥 Scarica Rapporto PDF",
         "terms": "Termini di Servizio",
         "privacy": "Informativa sulla Privacy",
         "error_url": "Si prega di inserire un URL valido.",
@@ -172,8 +161,6 @@ i18n_ui = {
             "Sélectionnez la langue de votre rapport PDF complet :"
         ),
         "btn_full_report": "💳 Payer 19 $ USD et Télécharger le PDF",
-        "success_pdf": "Rapport PDF généré avec succès !",
-        "download_pdf_btn": "📥 Télécharger le Rapport PDF",
         "terms": "Conditions Générales",
         "privacy": "Politique de Confidentialité",
         "error_url": "Veuillez entrer une URL valide.",
@@ -197,8 +184,6 @@ i18n_ui = {
         ),
         "report_lang_label": "选择完整PDF报告的语言：",
         "btn_full_report": "💳 支付 $19 USD 并下载 PDF",
-        "success_pdf": "PDF报告生成成功！",
-        "download_pdf_btn": "📥 下载 PDF 报告",
         "terms": "服务条款",
         "privacy": "隐私政策",
         "error_url": "请输入有效的网址。",
@@ -209,7 +194,7 @@ i18n_ui = {
 t = i18n_ui[ui_language]
 
 
-# Función blindada con respaldo y diagnóstico automático
+# Función de llamada con respaldo de modelos de chat
 def call_groq_chat(client, messages, temperature=0.7):
   chat_models = [
       "openai/gpt-oss-120b",
@@ -228,7 +213,6 @@ def call_groq_chat(client, messages, temperature=0.7):
       last_error = e
       continue
 
-  # Si todos fallan, consultamos directamente a la API qué modelos tiene disponibles esta key
   try:
     models_resp = client.models.list()
     available_ids = [m.id for m in models_resp.data]
@@ -304,73 +288,18 @@ if "preview_result" in st.session_state:
       ],
   )
 
+  # =========================================================
+  # CONFIGURACIÓN DEL BOTÓN DE PAGO CON LEMON SQUEEZY
+  # =========================================================
+  # Reemplazá 'TU_SUBDOMINIO' por el nombre corto de tu tienda en Lemon Squeezy (ej: storecheck-ai)
+  # Reemplazá 'TU_VARIANT_ID' por tu número de 7 cifras de Lemon Squeezy (ej: 1234567)
+  checkout_url = (
+      "https://storecheck-ai.lemonsqueezy.com/buy/2248959"  # <- EDITAR ACÁ
+  )
 
-  def generate_pdf_report(report_text, language_name):
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter)
-    styles = getSampleStyleSheet()
-    story = []
-
-    title_map = {
-        "Español": "StoreCheck AI - Reporte de Auditoría Completo",
-        "English": "StoreCheck AI - Comprehensive Audit Report",
-        "Português": "StoreCheck AI - Relatório de Auditoria Completo",
-        "Italiano": "StoreCheck AI - Rapporto di Audit Completo",
-        "Français": "StoreCheck AI - Rapport d'Audit Complet",
-        "中文 (Chinese)": "StoreCheck AI - 完整审计报告",
-    }
-
-    doc_title = title_map.get(language_name, "StoreCheck AI - Audit Report")
-    story.append(Paragraph(doc_title, styles["Heading1"]))
-    story.append(Spacer(1, 12))
-
-    for paragraph in report_text.split("\n"):
-      if paragraph.strip():
-        story.append(Paragraph(paragraph, styles["Normal"]))
-        story.append(Spacer(1, 8))
-
-    doc.build(story)
-    buffer.seek(0)
-    return buffer
-
-
-  if st.button(t["btn_full_report"]):
-    with st.spinner(t["spinner"]):
-      try:
-        full_prompt = (
-            "You are an expert e-commerce auditor and CRO specialist. Provide a"
-            f" comprehensive, deep technical audit report for the store"
-            f" {st.session_state['store_url']}, including UI/UX analysis,"
-            f" checkout friction, SEO recommendations, and step-by-step"
-            f" action items. Write the response entirely in {report_language}."
-        )
-
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You are an AI e-commerce audit expert providing"
-                    " professional consulting reports."
-                ),
-            },
-            {"role": "user", "content": full_prompt},
-        ]
-
-        chat_completion_full = call_groq_chat(client, messages, temperature=0.7)
-        full_report_text = chat_completion_full.choices[0].message.content
-
-        pdf_buffer = generate_pdf_report(full_report_text, report_language)
-
-        st.success(t["success_pdf"])
-        st.download_button(
-            label=t["download_pdf_btn"],
-            data=pdf_buffer,
-            file_name="StoreCheck_AI_Audit_Report.pdf",
-            mime="application/pdf",
-        )
-
-      except Exception as e:
-        st.error(f"❌ {e}")
+  st.link_button(
+      label=t["btn_full_report"], url=checkout_url, use_container_width=True
+  )
 
 # --- PIE DE PÁGINA ---
 st.markdown("---")

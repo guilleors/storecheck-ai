@@ -9,10 +9,7 @@ st.set_page_config(
     layout="centered",
 )
 
-# --- BARRA LATERAL (Configuración y Selector de Idioma de la Interfaz) ---
-st.sidebar.header("⚙️ Configuración")
-
-# Selector de idioma para la página en sí
+# --- BARRA LATERAL (Limpia, directo al selector de idioma) ---
 ui_language = st.sidebar.selectbox(
     "🌐 Idioma de la Interfaz / UI Language",
     ["Español", "English", "Português", "Italiano", "Français", "中文 (Chinese)"],
@@ -277,6 +274,9 @@ if "preview_result" in st.session_state:
   )
 
   st.markdown(
+      f"*(Report language selected: **{report_language}**)*"
+  )
+  st.markdown(t["payment_link"])
       f"*(Report language selected: **{report_language}**)*"
   )
   st.markdown(t["payment_link"])

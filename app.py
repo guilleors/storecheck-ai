@@ -294,7 +294,7 @@ if "preview_result" in st.session_state:
   # Reemplazá 'TU_SUBDOMINIO' por el nombre corto de tu tienda en Lemon Squeezy (ej: storecheck-ai)
   # Reemplazá 'TU_VARIANT_ID' por tu número de 7 cifras de Lemon Squeezy (ej: 1234567)
   checkout_url = (
-      "https://storecheck-ai.lemonsqueezy.com/buy/2248959"  # <- EDITAR ACÁ
+      "https://storecheck-ai.lemonsqueezy.com/checkout/buy/16b5540c-1884-4e2c-a07a-3912222588dc"  # <- EDITAR ACÁ
   )
 
   st.link_button(

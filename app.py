@@ -25,7 +25,7 @@ try:
   if "GROQ_API_KEY" in st.secrets:
     api_key = st.secrets["GROQ_API_KEY"]
     # DEBUGEO TEMPORAL: Muestra los primeros 6 caracteres para verificar
-    st.sidebar.info(f"Key de Secrets detectada: {api_key[:6]}...")
+    st.sidebar.info(f"Key de Secrets detectada: {api_key[:12]}...")
 except Exception as e:
   st.sidebar.error(f"Error leyendo secrets: {e}")
 

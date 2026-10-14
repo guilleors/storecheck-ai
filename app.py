@@ -243,29 +243,54 @@ if st.button(t["btn_preview"]):
   if not store_url:
     st.warning(t["error_url"])
   else:
-    with st.spinner(t["spinner"]):
-      try:
-        preview_prompt = (
-            "You are an expert e-commerce auditor and CRO specialist. Analyze"
-            f" the store {store_url}. Provide exactly 3 quick, high-impact"
-            f" findings or issues as a free preview. Write the response in"
-            f" {ui_language}."
-        )
+    # Barra de progreso y textos dinámicos con "dibujitos" (emojis)
+    progress_bar = st.progress(0)
+    status_text = st.empty()
 
-        messages = [
-            {"role": "system", "content": "You are an AI e-commerce audit expert."},
-            {"role": "user", "content": preview_prompt},
-        ]
+    try:
+      status_text.text(
+          "🌐 [1/3] Conectando y escaneando la estructura de la tienda..."
+      )
+      progress_bar.progress(33)
 
-        chat_completion = call_groq_chat(client, messages, temperature=0.7)
+      status_text.text(
+          "🎨 [2/3] Evaluando UI/UX, diseño y fricción de checkout..."
+      )
+      progress_bar.progress(66)
 
-        preview_result = chat_completion.choices[0].message.content
-        st.success(t["success_preview"])
+      preview_prompt = (
+          "You are an expert e-commerce auditor and CRO specialist. Analyze"
+          f" the store {store_url}. Provide exactly 3 quick, high-impact"
+          f" findings or issues as a free preview. Write the response in"
+          f" {ui_language}."
+      )
 
-        st.session_state["preview_result"] = preview_result
-        st.session_state["store_url"] = store_url
-      except Exception as e:
-        st.error(f"❌ {e}")
+      messages = [
+          {"role": "system", "content": "You are an AI e-commerce audit expert."},
+          {"role": "user", "content": preview_prompt},
+      ]
+
+      status_text.text(
+          "🤖 [3/3] Procesando auditoría con Inteligencia Artificial..."
+      )
+      progress_bar.progress(90)
+
+      chat_completion = call_groq_chat(client, messages, temperature=0.7)
+
+      preview_result = chat_completion.choices[0].message.content
+
+      # Completar la barra al 100%
+      progress_bar.progress(100)
+      status_text.text("¡Análisis completado con éxito! 🎉")
+
+      st.success(t["success_preview"])
+
+      st.session_state["preview_result"] = preview_result
+      st.session_state["store_url"] = store_url
+    except Exception as e:
+      progress_bar.empty()
+      status_text.empty()
+      st.error(f"❌ {e}")
 
 if "preview_result" in st.session_state:
   st.markdown("---")

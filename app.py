@@ -22,17 +22,19 @@ ui_language = st.sidebar.selectbox(
 # Intentar cargar la key de los secrets de Streamlit
 api_key = None
 try:
-    if "GROQ_API_KEY" in st.secrets:
-        api_key = st.secrets["GROQ_API_KEY"]
-except Exception:
-    pass
+  if "GROQ_API_KEY" in st.secrets:
+    api_key = st.secrets["GROQ_API_KEY"]
+    # DEBUGEO TEMPORAL: Muestra los primeros 6 caracteres para verificar
+    st.sidebar.info(f"Key de Secrets detectada: {api_key[:6]}...")
+except Exception as e:
+  st.sidebar.error(f"Error leyendo secrets: {e}")
 
 if not api_key:
-    api_key = st.sidebar.text_input(
-        "🔑 Groq API Key:", 
-        type="password",
-        help="Ingresá tu clave de Groq si no está configurada en los Secrets."
-    )
+  api_key = st.sidebar.text_input(
+      "🔑 Groq API Key:",
+      type="password",
+      help="Ingresá tu clave de Groq si no está configurada en los Secrets.",
+  )
 
 # Diccionario completo de textos de la interfaz (i18n)
 i18n_ui = {

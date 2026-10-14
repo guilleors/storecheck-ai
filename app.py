@@ -9,30 +9,49 @@ st.set_page_config(
     layout="centered",
 )
 
-# Inicializar cliente de Groq con los Secrets de Streamlit
-try:
-  api_key = st.secrets["GROQ_API_KEY"]
-  client = Groq(api_key=api_key)
-except Exception:
-  st.error(
-      "⚠️ No se encontró la GROQ_API_KEY en los Secrets de Streamlit."
-      " Configurala en el panel de control."
-  )
-  st.stop()
-
-# Interfaz Principal
 st.title("StoreCheck AI 🛒🤖")
 st.markdown(
     "Auditoría instantánea de tiendas online potenciada por Inteligencia"
     " Artificial para mercados globales."
 )
 
-# Barra lateral para configuración de idioma
+# --- BARRA LATERAL (Configuración y Clave) ---
 st.sidebar.header("⚙️ Configuración")
+
+# Intentar cargar la key de los secrets de Streamlit; si no está, pedirla en la barra lateral
+api_key = None
+try:
+  if "GROQ_API_KEY" in st.secrets:
+    api_key = st.secrets["GROQ_API_KEY"]
+except Exception:
+  pass
+
+if not api_key:
+  api_key = st.sidebar.text_input(
+      "🔑 Ingresá tu Groq API Key:",
+      type="password",
+      help=(
+          "Pegá tu clave de Groq acá si no la configuraste en los Secrets de"
+          " Streamlit."
+      ),
+  )
+
+# Selector de 6 idiomas en la barra lateral
 language = st.sidebar.selectbox(
     "Seleccioná el Idioma / Language",
     ["English", "Español", "Português", "Italiano", "Français", "中文 (Chinese)"],
 )
+
+# Verificar si tenemos la API key antes de continuar
+if not api_key:
+  st.warning(
+      "⚠️ Por favor, ingresá tu **Groq API Key** en la barra lateral izquierda"
+      " para poder usar la inteligencia artificial."
+  )
+  st.stop()
+
+# Inicializar cliente de Groq
+client = Groq(api_key=api_key)
 
 # Campo para ingresar la URL de la tienda
 store_url = st.text_input(
@@ -68,7 +87,7 @@ prompts_dict = {
         " resposta dividida em duas seções claras:\n1. VISUALIZAÇÃO GRATUITA:"
         " Dê 3 descobertas ou problemas rápidos de alto impacto.\n2. RELATÓRIO"
         " COMPLETO: Dê uma auditoria detalhada e abrangente, incluindo UI/UX,"
-        " fricción no checkout, SEO e etapas acionáveis específicas. Escreva"
+        " fricção no checkout, SEO e etapas acionáveis específicas. Escreva"
         " em português."
     ),
     "Italiano": (
@@ -88,8 +107,8 @@ prompts_dict = {
         " boutiques en ligne. Fournissez votre réponse divisée en deux sections"
         " claires :\n1. APERÇU GRATUIT : Donnez 3 constatations ou problèmes"
         " rapides à fort impact.\n2. RAPPORT COMPLET : Fournissez un audit"
-        " détaillé et complet comprenant l'UI/UX, la friction du tunnel d'achat,"
-        " le SEO et des étapes exploitables. Écrivez en français."
+        " détaillé et complet comprenant l'UI/UX, le tunnel d'achat, le SEO et"
+        " des étapes exploitables. Écrivez en français."
     ),
     "中文 (Chinese)": (
         "您是一位专业的电商审计师和转化率优化（CRO）专家。请根据网店的最佳实践分析店铺"
@@ -109,7 +128,6 @@ if st.button("🚀 Analizar Tienda / Analyze Store"):
       try:
         selected_prompt = prompts_dict[language]
 
-        # Llamada a la API de Groq
         chat_completion = client.chat.completions.create(
             messages=[
                 {
@@ -127,13 +145,11 @@ if st.button("🚀 Analizar Tienda / Analyze Store"):
 
         analysis_result = chat_completion.choices[0].message.content
 
-        # Mostrar resultados en pantalla
         st.success("¡Análisis completado con éxito! / Analysis completed!")
 
         st.markdown("### 🔍 Vista Previa del Análisis / Preview")
         st.write(analysis_result)
 
-        # Sección de monetización simulada (Próximo paso: conectar botón de pago)
         st.markdown("---")
         st.markdown("### 📄 Descargar Reporte Completo en PDF / Full PDF Report")
         st.info(

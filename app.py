@@ -1,33 +1,31 @@
 import io
 import os
-import streamlit as st
 from groq import Groq
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+import streamlit as st
 
 # Configuración inicial de la página
 st.set_page_config(
     page_title="StoreCheck AI - Global E-commerce Audit",
     page_icon="🚀",
-    layout="centered"
+    layout="centered",
 )
 
 # --- BARRA LATERAL (Selector de Idioma de la Interfaz) ---
 ui_language = st.sidebar.selectbox(
     "🌐 Idioma de la Interfaz / UI Language",
-    ["Español", "English", "Português", "Italiano", "Français", "中文 (Chinese)"]
+    ["Español", "English", "Português", "Italiano", "Français", "中文 (Chinese)"],
 )
 
-# Intentar cargar la key de los secrets de Streamlit
+# Cargar la key de los secrets o permitir ingreso manual
 api_key = None
 try:
-  if "GROQ_API_KEY" in st.secrets:
-    api_key = st.secrets["GROQ_API_KEY"]
-    # DEBUGEO TEMPORAL: Muestra los primeros 6 caracteres para verificar
-    st.sidebar.info(f"Key de Secrets detectada: {api_key[:12]}...")
-except Exception as e:
-  st.sidebar.error(f"Error leyendo secrets: {e}")
+  if "GROQ_API_KEY" in st.secrets and st.secrets["GROQ_API_KEY"]:
+    api_key = st.secrets["GROQ_API_KEY"].strip()
+except Exception:
+  pass
 
 if not api_key:
   api_key = st.sidebar.text_input(
@@ -40,7 +38,10 @@ if not api_key:
 i18n_ui = {
     "Español": {
         "title": "StoreCheck AI 🛒🤖",
-        "subtitle": "Auditoría instantánea de tiendas online potenciada por Inteligencia Artificial para mercados globales.",
+        "subtitle": (
+            "Auditoría instantánea de tiendas online potenciada por Inteligencia"
+            " Artificial para mercados globales."
+        ),
         "url_label": "Ingresá la URL de la tienda a auditar:",
         "url_placeholder": "https://tu-tienda.com",
         "btn_preview": "🚀 Analizar Tienda (Vista Previa Gratis)",
@@ -48,19 +49,29 @@ i18n_ui = {
         "success_preview": "¡Vista previa generada con éxito!",
         "preview_title": "🔍 Vista Previa del Análisis",
         "full_report_title": "📄 Generar y Descargar Reporte Completo en PDF",
-        "full_report_info": "Obtené el informe técnico completo con guías de optimización paso a paso, análisis profundo de UI/UX, SEO y fricción de checkout.",
-        "report_lang_label": "Seleccioná el idioma para tu Reporte PDF completo:",
+        "full_report_info": (
+            "Obtené el informe técnico completo con guías de optimización paso a"
+            " paso, análisis profundo de UI/UX, SEO y fricción de checkout."
+        ),
+        "report_lang_label": (
+            "Seleccioná el idioma para tu Reporte PDF completo:"
+        ),
         "btn_full_report": "💳 Pagar $19 USD y Descargar PDF",
         "success_pdf": "¡Reporte PDF generado con éxito!",
         "download_pdf_btn": "📥 Descargar Reporte en PDF",
         "terms": "Términos y Condiciones",
         "privacy": "Política de Privacidad",
         "error_url": "Por favor, ingresá una URL válida.",
-        "error_api": "⚠️ Por favor, ingresá tu **Groq API Key** en la barra lateral izquierda para comenzar."
+        "error_api": (
+            "⚠️ Por favor, ingresá tu **Groq API Key** en la barra lateral"
+            " izquierda para comenzar."
+        ),
     },
     "English": {
         "title": "StoreCheck AI 🛒🤖",
-        "subtitle": "Instant AI-powered e-commerce store audit for global markets.",
+        "subtitle": (
+            "Instant AI-powered e-commerce store audit for global markets."
+        ),
         "url_label": "Enter the store URL to audit:",
         "url_placeholder": "https://your-store.com",
         "btn_preview": "🚀 Analyze Store (Free Preview)",
@@ -68,7 +79,10 @@ i18n_ui = {
         "success_preview": "Preview generated successfully!",
         "preview_title": "🔍 Analysis Preview",
         "full_report_title": "📄 Generate & Download Full PDF Report",
-        "full_report_info": "Get the complete technical report with step-by-step optimization guides, deep UI/UX analysis, SEO, and checkout friction review.",
+        "full_report_info": (
+            "Get the complete technical report with step-by-step optimization"
+            " guides, deep UI/UX analysis, SEO, and checkout friction review."
+        ),
         "report_lang_label": "Select the language for your full PDF report:",
         "btn_full_report": "💳 Pay $19 USD & Download PDF",
         "success_pdf": "PDF report generated successfully!",
@@ -76,11 +90,17 @@ i18n_ui = {
         "terms": "Terms of Service",
         "privacy": "Privacy Policy",
         "error_url": "Please enter a valid URL.",
-        "error_api": "⚠️ Please enter your **Groq API Key** in the left sidebar to begin."
+        "error_api": (
+            "⚠️ Please enter your **Groq API Key** in the left sidebar to"
+            " begin."
+        ),
     },
     "Português": {
         "title": "StoreCheck AI 🛒🤖",
-        "subtitle": "Auditoria instantânea de lojas online impulsionada por Inteligência Artificial para mercados globais.",
+        "subtitle": (
+            "Auditoria instantânea de lojas online impulsionada por"
+            " Inteligência Artificial para mercados globais."
+        ),
         "url_label": "Digite o URL da loja para auditar:",
         "url_placeholder": "https://sua-loja.com",
         "btn_preview": "🚀 Analisar Loja (Pré-visualização Gratuita)",
@@ -88,19 +108,30 @@ i18n_ui = {
         "success_preview": "Pré-visualização gerada com sucesso!",
         "preview_title": "🔍 Visualização da Análise",
         "full_report_title": "📄 Gerar e Baixar Relatório Completo em PDF",
-        "full_report_info": "Obtenha o relatório técnico completo com guias de otimização passo a passo, análise profunda de UI/UX, SEO e fricção de checkout.",
-        "report_lang_label": "Selecione o idioma para o seu relatório PDF completo:",
+        "full_report_info": (
+            "Obtenha o relatório técnico completo com guias de otimização passo"
+            " a passo, análise profunda de UI/UX, SEO e fricção de checkout."
+        ),
+        "report_lang_label": (
+            "Selecione o idioma para o seu relatório PDF completo:"
+        ),
         "btn_full_report": "💳 Pagar $19 USD e Baixar PDF",
         "success_pdf": "Relatório PDF gerado com sucesso!",
         "download_pdf_btn": "📥 Baixar Relatório em PDF",
         "terms": "Termos de Serviço",
         "privacy": "Política de Privacidade",
         "error_url": "Por favor, insira um URL válido.",
-        "error_api": "⚠️ Insira sua **Groq API Key** na barra lateral esquerda para começar."
+        "error_api": (
+            "⚠️ Insira sua **Groq API Key** na barra lateral esquerda para"
+            " começar."
+        ),
     },
     "Italiano": {
         "title": "StoreCheck AI 🛒🤖",
-        "subtitle": "Audit istantaneo di negozi online basato su intelligenza artificiale per mercati globali.",
+        "subtitle": (
+            "Audit istantaneo di negozi online basato su intelligenza"
+            " artificiale per mercati globali."
+        ),
         "url_label": "Inserisci l'URL del negozio da analizzare:",
         "url_placeholder": "https://tuo-negozio.com",
         "btn_preview": "🚀 Analizza Negozio (Anteprima Gratuita)",
@@ -108,19 +139,31 @@ i18n_ui = {
         "success_preview": "Anteprima generata con successo!",
         "preview_title": "🔍 Anteprima dell'Analisi",
         "full_report_title": "📄 Genera e Scarica il Rapporto PDF Completo",
-        "full_report_info": "Ottieni il report tecnico completo con guide di ottimizzazione dettagliate, analisi approfondita di UI/UX, SEO e attrito al checkout.",
-        "report_lang_label": "Seleziona la lingua per il tuo rapporto PDF completo:",
+        "full_report_info": (
+            "Ottieni il report tecnico completo con guide di ottimizzazione"
+            " dettagliate, analisi approfondita di UI/UX, SEO e attrito al"
+            " checkout."
+        ),
+        "report_lang_label": (
+            "Seleziona la lingua per il tuo rapporto PDF completo:"
+        ),
         "btn_full_report": "💳 Paga $19 USD e Scarica il PDF",
         "success_pdf": "Rapporto PDF generato con successo!",
         "download_pdf_btn": "📥 Scarica Rapporto PDF",
         "terms": "Termini di Servizio",
         "privacy": "Informativa sulla Privacy",
         "error_url": "Si prega di inserire un URL valido.",
-        "error_api": "⚠️ Inserisci la tua **Groq API Key** nella barra laterale sinistra per iniziare."
+        "error_api": (
+            "⚠️ Inserisci la tua **Groq API Key** nella barra laterale sinistra"
+            " per iniziare."
+        ),
     },
     "Français": {
         "title": "StoreCheck AI 🛒🤖",
-        "subtitle": "Audit instantané de boutiques en ligne propulsé par l'intelligence artificielle pour les marchés mondiaux.",
+        "subtitle": (
+            "Audit instantané de boutiques en ligne propulsé par l'intelligence"
+            " artificielle pour les marchés mondiaux."
+        ),
         "url_label": "Entrez l'URL de la boutique à auditer :",
         "url_placeholder": "https://votre-boutique.com",
         "btn_preview": "🚀 Analyser la Boutique (Aperçu Gratuit)",
@@ -128,15 +171,24 @@ i18n_ui = {
         "success_preview": "Aperçu généré avec succès !",
         "preview_title": "🔍 Aperçu de l'Analyse",
         "full_report_title": "📄 Générer et Télécharger le Rapport PDF Complet",
-        "full_report_info": "Obtenez le rapport technique complet avec des guides d'optimisation étape par étape, une analyse approfondie UI/UX, SEO et tunnel d'achat.",
-        "report_lang_label": "Sélectionnez la langue de votre rapport PDF complet :",
+        "full_report_info": (
+            "Obtenez le rapport technique complet avec des guides"
+            " d'optimisation étape par étape, une analyse approfondie UI/UX,"
+            " SEO et tunnel d'achat."
+        ),
+        "report_lang_label": (
+            "Sélectionnez la langue de votre rapport PDF complet :"
+        ),
         "btn_full_report": "💳 Payer 19 $ USD et Télécharger le PDF",
         "success_pdf": "Rapport PDF généré avec succès !",
         "download_pdf_btn": "📥 Télécharger le Rapport PDF",
         "terms": "Conditions Générales",
         "privacy": "Politique de Confidentialité",
         "error_url": "Veuillez entrer une URL valide.",
-        "error_api": "⚠️ Veuillez entrer votre **Groq API Key** dans la barre latérale gauche pour commencer."
+        "error_api": (
+            "⚠️ Veuillez entrer votre **Groq API Key** dans la barre latérale"
+            " gauche pour commencer."
+        ),
     },
     "中文 (Chinese)": {
         "title": "StoreCheck AI 🛒🤖",
@@ -148,7 +200,9 @@ i18n_ui = {
         "success_preview": "预览生成成功！",
         "preview_title": "🔍 分析预览",
         "full_report_title": "📄 生成并下载完整PDF报告",
-        "full_report_info": "获取包含分步优化指南、深入UI/UX分析、SEO和结账摩擦检查的完整技术报告。",
+        "full_report_info": (
+            "获取包含分步优化指南、深入UI/UX分析、SEO和结账摩擦检查的完整技术报告。"
+        ),
         "report_lang_label": "选择完整PDF报告的语言：",
         "btn_full_report": "💳 支付 $19 USD 并下载 PDF",
         "success_pdf": "PDF报告生成成功！",
@@ -156,128 +210,172 @@ i18n_ui = {
         "terms": "服务条款",
         "privacy": "隐私政策",
         "error_url": "请输入有效的网址。",
-        "error_api": "⚠️ 请在左侧边栏中输入您的 **Groq API Key** 以开始。"
-    }
+        "error_api": "⚠️ 请在左侧边栏中输入您的 **Groq API Key** 以开始。",
+    },
 }
 
 t = i18n_ui[ui_language]
-
-# Función para generar el PDF en memoria con ReportLab
-def generate_pdf_report(report_text, language_name):
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter)
-    styles = getSampleStyleSheet()
-    story = []
-    
-    title_map = {
-        "Español": "StoreCheck AI - Reporte de Auditoría Completo",
-        "English": "StoreCheck AI - Comprehensive Audit Report",
-        "Português": "StoreCheck AI - Relatório de Auditoria Completo",
-        "Italiano": "StoreCheck AI - Rapporto di Audit Completo",
-        "Français": "StoreCheck AI - Rapport d'Audit Complet",
-        "中文 (Chinese)": "StoreCheck AI - 完整审计报告"
-    }
-    
-    doc_title = title_map.get(language_name, "StoreCheck AI - Audit Report")
-    story.append(Paragraph(doc_title, styles['Heading1']))
-    story.append(Spacer(1, 12))
-    
-    for paragraph in report_text.split('\n'):
-        if paragraph.strip():
-            story.append(Paragraph(paragraph, styles['Normal']))
-            story.append(Spacer(1, 8))
-            
-    doc.build(story)
-    buffer.seek(0)
-    return buffer
 
 # Interfaz Principal
 st.title(t["title"])
 st.markdown(t["subtitle"])
 
 if not api_key:
-    st.warning(t["error_api"])
-    st.stop()
+  st.warning(t["error_api"])
+  st.stop()
 
 client = Groq(api_key=api_key)
+
+# Obtener dinámicamente el primer modelo disponible en la cuenta de Groq
+selected_model = None
+try:
+  models_response = client.models.list()
+  # Buscar un modelo que sirva para chat (priorizando Llama)
+  for m in models_response.data:
+    if "llama" in m.id.lower():
+      selected_model = m.id
+      break
+  if not selected_model and models_response.data:
+    selected_model = models_response.data[0].id
+except Exception:
+  pass
+
+# Fallback por si falla el listado
+if not selected_model:
+  selected_model = "llama-3.3-70b-versatile"
 
 store_url = st.text_input(t["url_label"], placeholder=t["url_placeholder"])
 
 if st.button(t["btn_preview"]):
-    if not store_url:
-        st.warning(t["error_url"])
-    else:
-        with st.spinner(t["spinner"]):
-            try:
-                preview_prompt = f"You are an expert e-commerce auditor and CRO specialist. Analyze the store {store_url}. Provide exactly 3 quick, high-impact findings or issues as a free preview. Write the response in {ui_language}."
-                
-                chat_completion = client.chat.completions.create(
-                    messages=[
-                        {"role": "system", "content": "You are an AI e-commerce audit expert."},
-                        {"role": "user", "content": preview_prompt}
-                    ],
-                    model="llama-3.3-70b-versatile",
-                    temperature=0.7,
-                )
-                
-                preview_result = chat_completion.choices[0].message.content
-                st.success(t["success_preview"])
-                
-                st.session_state['preview_result'] = preview_result
-                st.session_state['store_url'] = store_url
-            except Exception as e:
-                st.error(f"Error: {e}")
+  if not store_url:
+    st.warning(t["error_url"])
+  else:
+    with st.spinner(t["spinner"]):
+      try:
+        preview_prompt = (
+            "You are an expert e-commerce auditor and CRO specialist. Analyze"
+            f" the store {store_url}. Provide exactly 3 quick, high-impact"
+            f" findings or issues as a free preview. Write the response in"
+            f" {ui_language}."
+        )
 
-if 'preview_result' in st.session_state:
-    st.markdown("---")
-    st.markdown(f"### {t['preview_title']}")
-    st.write(st.session_state['preview_result'])
-    
-    st.markdown("---")
-    st.markdown(f"### {t['full_report_title']}")
-    st.info(t["full_report_info"])
-    
-    report_language = st.selectbox(
-        t["report_lang_label"],
-        ["Español", "English", "Português", "Italiano", "Français", "中文 (Chinese)"]
-    )
-    
-    if st.button(t["btn_full_report"]):
-        with st.spinner(t["spinner"]):
-            try:
-                full_prompt = f"You are an expert e-commerce auditor and CRO specialist. Provide a comprehensive, deep technical audit report for the store {st.session_state['store_url']}, including UI/UX analysis, checkout friction, SEO recommendations, and step-by-step action items. Write the response entirely in {report_language}."
-                
-                chat_completion_full = client.chat.completions.create(
-                    messages=[
-                        {"role": "system", "content": "You are an AI e-commerce audit expert providing professional consulting reports."},
-                        {"role": "user", "content": full_prompt}
-                    ],
-                    model="llama-3.3-70b-versatile",
-                    temperature=0.7,
-                )
-                
-                full_report_text = chat_completion_full.choices[0].message.content
-                
-                pdf_buffer = generate_pdf_report(full_report_text, report_language)
-                
-                st.success(t["success_pdf"])
-                
-                st.download_button(
-                    label=t["download_pdf_btn"],
-                    data=pdf_buffer,
-                    file_name="StoreCheck_AI_Audit_Report.pdf",
-                    mime="application/pdf"
-                )
-                
-            except Exception as e:
-                st.error(f"Error: {e}")
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You are an AI e-commerce audit expert.",
+                },
+                {"role": "user", "content": preview_prompt},
+            ],
+            model=selected_model,
+            temperature=0.7,
+        )
 
-# --- PIE DE PÁGINA (Términos y Condiciones y Privacidad) ---
+        preview_result = chat_completion.choices[0].message.content
+        st.success(t["success_preview"])
+
+        st.session_state["preview_result"] = preview_result
+        st.session_state["store_url"] = store_url
+      except Exception as e:
+        st.error(f"Error al conectar con Groq ({selected_model}): {e}")
+
+if "preview_result" in st.session_state:
+  st.markdown("---")
+  st.markdown(f"### {t['preview_title']}")
+  st.write(st.session_state["preview_result"])
+
+  st.markdown("---")
+  st.markdown(f"### {t['full_report_title']}")
+  st.info(t["full_report_info"])
+
+  report_language = st.selectbox(
+      t["report_lang_label"],
+      [
+          "Español",
+          "English",
+          "Português",
+          "Italiano",
+          "Français",
+          "中文 (Chinese)",
+      ],
+  )
+
+
+  def generate_pdf_report(report_text, language_name):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    styles = getSampleStyleSheet()
+    story = []
+
+    title_map = {
+        "Español": "StoreCheck AI - Reporte de Auditoría Completo",
+        "English": "StoreCheck AI - Comprehensive Audit Report",
+        "Português": "StoreCheck AI - Relatório de Auditoria Completo",
+        "Italiano": "StoreCheck AI - Rapporto di Audit Completo",
+        "Français": "StoreCheck AI - Rapport d'Audit Complet",
+        "中文 (Chinese)": "StoreCheck AI - 完整审计报告",
+    }
+
+    doc_title = title_map.get(language_name, "StoreCheck AI - Audit Report")
+    story.append(Paragraph(doc_title, styles["Heading1"]))
+    story.append(Spacer(1, 12))
+
+    for paragraph in report_text.split("\n"):
+      if paragraph.strip():
+        story.append(Paragraph(paragraph, styles["Normal"]))
+        story.append(Spacer(1, 8))
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
+
+  if st.button(t["btn_full_report"]):
+    with st.spinner(t["spinner"]):
+      try:
+        full_prompt = (
+            "You are an expert e-commerce auditor and CRO specialist. Provide a"
+            f" comprehensive, deep technical audit report for the store"
+            f" {st.session_state['store_url']}, including UI/UX analysis,"
+            f" checkout friction, SEO recommendations, and step-by-step"
+            f" action items. Write the response entirely in {report_language}."
+        )
+
+        chat_completion_full = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an AI e-commerce audit expert providing"
+                        " professional consulting reports."
+                    ),
+                },
+                {"role": "user", "content": full_prompt},
+            ],
+            model=selected_model,
+            temperature=0.7,
+        )
+
+        full_report_text = chat_completion_full.choices[0].message.content
+        pdf_buffer = generate_pdf_report(full_report_text, report_language)
+
+        st.success(t["success_pdf"])
+        st.download_button(
+            label=t["download_pdf_btn"],
+            data=pdf_buffer,
+            file_name="StoreCheck_AI_Audit_Report.pdf",
+            mime="application/pdf",
+        )
+
+      except Exception as e:
+        st.error(f"Error al generar el reporte con ({selected_model}): {e}")
+
+# --- PIE DE PÁGINA ---
 st.markdown("---")
 st.markdown(
     f"<p style='text-align: center; font-size: 12px; color: gray;'>"
     f"<a href='#' target='_blank'>{t['terms']}</a> | <a href='#' target='_blank'>{t['privacy']}</a>"
     f"<br>© 2026 StoreCheck AI. Global E-commerce Audits."
     f"</p>",
-    unsafe_allow_html=True
+    unsafe_allow_html=True,
 )

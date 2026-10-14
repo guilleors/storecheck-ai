@@ -1,136 +1,149 @@
-import streamlit as st
+import os
 from groq import Groq
-import time
-import random
+import streamlit as st
 
-# 1. Configuración de página
+# Configuración inicial de la página
 st.set_page_config(
-    page_title="StoreCheck AI | Instant E-Commerce Audit",
-    page_icon="⚡",
-    layout="centered"
+    page_title="StoreCheck AI - Global E-commerce Audit",
+    page_icon="🚀",
+    layout="centered",
 )
 
-# Estilos CSS
-st.markdown("""
-    <style>
-    .main { padding-top: 2rem; }
-    .stButton>button { width: 100%; border-radius: 8px; height: 3em; font-weight: bold; }
-    </style>
-""", unsafe_allow_html=True)
-
-# Manejo seguro de API Key para local y producción
-api_key = None
+# Inicializar cliente de Groq con los Secrets de Streamlit
 try:
-    if "GROQ_API_KEY" in st.secrets:
-        api_key = st.secrets["GROQ_API_KEY"]
+  api_key = st.secrets["GROQ_API_KEY"]
+  client = Groq(api_key=api_key)
 except Exception:
-    api_key = None
+  st.error(
+      "⚠️ No se encontró la GROQ_API_KEY en los Secrets de Streamlit."
+      " Configurala en el panel de control."
+  )
+  st.stop()
 
-st.title("⚡ StoreCheck AI")
-st.caption("Automated AI Diagnostics & Growth Recommendations for E-Commerce Stores")
+# Interfaz Principal
+st.title("StoreCheck AI 🛒🤖")
+st.markdown(
+    "Auditoría instantánea de tiendas online potenciada por Inteligencia"
+    " Artificial para mercados globales."
+)
 
-# Sidebar para prueba local si no hay secret configurado
-if not api_key:
-    api_key = st.sidebar.text_input("🔑 Groq API Key (Local Test)", type="password")
+# Barra lateral para configuración de idioma
+st.sidebar.header("⚙️ Configuración")
+language = st.sidebar.selectbox(
+    "Seleccioná el Idioma / Language",
+    ["English", "Español", "Português", "Italiano", "Français", "中文 (Chinese)"],
+)
 
-st.markdown("---")
+# Campo para ingresar la URL de la tienda
+store_url = st.text_input(
+    "Ingresá la URL de la tienda a auditar:",
+    placeholder="https://tu-tienda.com",
+)
 
-url_input = st.text_input("🌐 Enter your Store URL", placeholder="https://mycoolstore.com")
+# Diccionario de prompts por idioma
+prompts_dict = {
+    "English": (
+        "You are an expert e-commerce auditor and conversion rate optimization"
+        f" (CRO) specialist. Analyze the store {store_url} based on general"
+        " best practices for online shops. Provide your response divided into"
+        " two clear sections:\n1. FREE PREVIEW: Give 3 quick, high-impact"
+        " findings/issues.\n2. FULL REPORT: Give a detailed, comprehensive"
+        " audit including UI/UX, checkout friction, SEO, and specific"
+        " actionable steps for improvement. Write the output in English."
+    ),
+    "Español": (
+        "Sos un experto auditor de e-commerce y especialista en optimización de"
+        f" tasas de conversión (CRO). Analiza la tienda {store_url} basándote"
+        " en buenas prácticas de tiendas online. Proporciona tu respuesta"
+        " dividida en dos secciones claras:\n1. VISTA PREVIA GRATUITA: Da 3"
+        " hallazgos o problemas rápidos de alto impacto.\n2. REPORTE COMPLETO: Da"
+        " una auditoría detallada y completa que incluya UI/UX, fricción en el"
+        " checkout, SEO y pasos accionables específicos. Escribí la salida en"
+        " español."
+    ),
+    "Português": (
+        "Você é um auditor especialista em e-commerce e especialista em"
+        f" otimização de taxa de conversão (CRO). Analise a loja {store_url}"
+        " com base nas melhores práticas para lojas virtuais. Forneça sua"
+        " resposta dividida em duas seções claras:\n1. VISUALIZAÇÃO GRATUITA:"
+        " Dê 3 descobertas ou problemas rápidos de alto impacto.\n2. RELATÓRIO"
+        " COMPLETO: Dê uma auditoria detalhada e abrangente, incluindo UI/UX,"
+        " fricción no checkout, SEO e etapas acionáveis específicas. Escreva"
+        " em português."
+    ),
+    "Italiano": (
+        "Sei un revisore esperto di e-commerce e uno specialista in"
+        " ottimizzazione del tasso di conversione (CRO). Analizza il negozio"
+        f" {store_url} in base alle migliori pratiche per i negozi online."
+        " Fornisci la tua risposta divisa in due sezioni chiare:\n1. ANTEPRIMA"
+        " GRATUITA: Dai 3 risultati o problemi rapidi ad alto impatto.\n2."
+        " RAPPORTO COMPLETO: Fornisci un audit dettagliato e completo che"
+        " includa UI/UX, attrito al checkout, SEO e passaggi specifici"
+        " azionabili. Scrivi in italiano."
+    ),
+    "Français": (
+        "Vous êtes un auditeur expert en e-commerce et un spécialiste de"
+        " l'optimisation du taux de conversion (CRO). Analysez la boutique"
+        f" {store_url} en vous basant sur les meilleures pratiques pour les"
+        " boutiques en ligne. Fournissez votre réponse divisée en deux sections"
+        " claires :\n1. APERÇU GRATUIT : Donnez 3 constatations ou problèmes"
+        " rapides à fort impact.\n2. RAPPORT COMPLET : Fournissez un audit"
+        " détaillé et complet comprenant l'UI/UX, la friction du tunnel d'achat,"
+        " le SEO et des étapes exploitables. Écrivez en français."
+    ),
+    "中文 (Chinese)": (
+        "您是一位专业的电商审计师和转化率优化（CRO）专家。请根据网店的最佳实践分析店铺"
+        f" {store_url}。请将您的回答分为两部分：\n1.免费预览：提供3个快速、高影响力的发现或问题。\n2.完整报告：提供详细且全面的审计，包括UI/UX、结账摩擦、SEO和具体的优化步骤。请用中文回答。"
+    ),
+}
 
-if st.button("🚀 Run Free Store Audit"):
-    if not url_input:
-        st.warning("Please enter a valid store URL first.")
-    elif not api_key:
-        st.error("Please enter your Groq API Key in the sidebar to proceed.")
-    else:
-        clean_url = url_input.replace("https://", "").replace("http://", "").strip("/")
-        
-        progress_bar = st.progress(0)
-        status_text = st.empty()
-        
-        status_text.text("🔍 Scanning store headers & speed response...")
-        progress_bar.progress(30)
-        time.sleep(0.5)
-        
-        status_text.text("📱 Checking mobile responsiveness & viewport tags...")
-        progress_bar.progress(60)
-        time.sleep(0.5)
-        
-        status_text.text("🤖 Asking AI Engine for optimization tips...")
-        progress_bar.progress(90)
-        
-        score = random.randint(62, 78)
-        issues = [
-            "Missing meta description on key product pages.",
-            "3 large images detected without WebP compression or ALT tags.",
-            "Missing mobile viewport meta tag affecting responsive rendering."
-        ]
-        
-        prompt = f"""
-        You are an elite E-Commerce SEO and conversion rate optimization consultant.
-        A diagnostic tool scanned '{clean_url}' and found: {issues}.
-        
-        Provide 3 clear, actionable recommendations in English to fix these issues and boost conversions.
-        Use bullet points. Do not include markdown headers or conversational intros.
-        """
-        
-        try:
-            client = Groq(api_key=api_key)
-            completion = client.chat.completions.create(
-                model="openai/gpt-oss-120b",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.6,
-            )
-            ai_report = completion.choices[0].message.content
-            
-            progress_bar.progress(100)
-            status_text.empty()
-            
-            st.success("✅ Audit Completed Successfully!")
-            st.subheader(f"📊 Overall Store Health: {score}/100")
-            
-            col1, col2, col3 = st.columns(3)
-            col1.metric("SEO Score", f"{score}%", "-12%")
-            col2.metric("Speed Index", "2.4s", "+0.8s")
-            col3.metric("Mobile Readiness", "Warning", delta_color="inverse")
-            
-            st.markdown("---")
-            st.subheader("💡 AI Executive Summary & Action Plan")
-            st.markdown(ai_report)
-            
-            st.markdown("---")
-            col_low, col_high = st.columns(2)
-            
-            with col_low:
-                st.markdown("### 🔒 Deep Technical Report")
-                st.write("**Price: $9 USD**")
-                st.write("• 15+ automated technical checks")
-                st.write("• Exact code snippets to copy/paste")
-                st.write("• PDF export for your developers")
-                st.link_button("💳 Get PDF Report ($9)", "https://lemon-squeezer-placeholder-link")
+if st.button("🚀 Analizar Tienda / Analyze Store"):
+  if not store_url:
+    st.warning(
+        "Por favor, ingresá una URL válida. / Please enter a valid URL."
+    )
+  else:
+    with st.spinner(
+        "Analizando la tienda globalmente... / Analyzing store globally..."
+    ):
+      try:
+        selected_prompt = prompts_dict[language]
 
-            with col_high:
-                st.markdown("### 🛠️ Hands-On Fix Service")
-                st.write("**Price: From $299 USD**")
-                st.write("• 100% Done-For-You implementation")
-                st.write("• Guaranteed 90+ Health Score")
-                st.write("• Ready in less than 48 hours")
-                st.link_button("💬 Request Fix / Contact", "https://wa.me/placeholder")
+        # Llamada a la API de Groq
+        chat_completion = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an AI e-commerce audit expert. Always provide"
+                        " structured, highly professional analysis."
+                    ),
+                },
+                {"role": "user", "content": selected_prompt},
+            ],
+            model="llama3-8b-8192",
+            temperature=0.7,
+        )
 
-        except Exception as e:
-            progress_bar.empty()
-            status_text.empty()
-            st.error(f"Error connecting to AI engine: {e}")
+        analysis_result = chat_completion.choices[0].message.content
 
-# Pie legal
-st.markdown("---")
-st.caption("© 2026 StoreCheck AI. All rights reserved.")
+        # Mostrar resultados en pantalla
+        st.success("¡Análisis completado con éxito! / Analysis completed!")
 
-with st.expander("⚖️ Legal, Privacy & Terms of Service"):
-    tab1, tab2, tab3 = st.tabs(["Terms of Service", "Privacy Policy", "Refund Policy"])
-    with tab1:
-        st.markdown("1. **Service Overview:** Automated SEO & technical diagnostics...")
-    with tab2:
-        st.markdown("1. **Data Collection:** Only public URLs processed...")
-    with tab3:
-        st.markdown("1. **Digital Reports:** Non-refundable once delivered...")
+        st.markdown("### 🔍 Vista Previa del Análisis / Preview")
+        st.write(analysis_result)
+
+        # Sección de monetización simulada (Próximo paso: conectar botón de pago)
+        st.markdown("---")
+        st.markdown("### 📄 Descargar Reporte Completo en PDF / Full PDF Report")
+        st.info(
+            "Obtené el informe técnico completo con guías de optimización paso"
+            " a paso en PDF."
+        )
+        st.markdown(
+            "[🔒 Desbloquear Reporte Completo por $19 USD / Unlock Full Report]"
+            "(https://tu-enlace-de-pago-aqui.lemonsqueezy.com)"
+        )
+
+      except Exception as e:
+        st.error(f"Error al procesar la solicitud / Error processing: {e}")

@@ -1,3 +1,3 @@
-streamlit
-groq
-reportlab
+streamlit>=1.35.0
+groq>=0.11.0
+reportlab>=4.0.0

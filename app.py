@@ -19,20 +19,12 @@ ui_language = st.sidebar.selectbox(
     ["Español", "English", "Português", "Italiano", "Français", "中文 (Chinese)"],
 )
 
-# Cargar la key de los secrets o permitir ingreso manual
-api_key = None
-try:
-  if "GROQ_API_KEY" in st.secrets and st.secrets["GROQ_API_KEY"]:
-    api_key = st.secrets["GROQ_API_KEY"].strip()
-except Exception:
-  pass
-
-if not api_key:
-  api_key = st.sidebar.text_input(
-      "🔑 Groq API Key:",
-      type="password",
-      help="Ingresá tu clave de Groq si no está configurada en los Secrets.",
-  )
+# Ingreso directo de la API Key en la barra lateral (idéntico a tu entorno local)
+api_key = st.sidebar.text_input(
+    "🔑 Groq API Key:",
+    type="password",
+    help="Pegá aquí tu clave de Groq (la misma que usaste en tu localhost).",
+)
 
 # Diccionario completo de textos de la interfaz (i18n)
 i18n_ui = {
@@ -216,7 +208,8 @@ i18n_ui = {
 
 t = i18n_ui[ui_language]
 
-# Función con respaldo estricto solo para modelos de chat válidos
+
+# Función de llamada con respaldo de modelos de chat estables
 def call_groq_chat(client, messages, temperature=0.7):
   chat_models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
   last_error = None

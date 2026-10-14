@@ -1,5 +1,9 @@
+import io
 import os
 from groq import Groq
+from reportlab.lib.pagesizes import letter
+from reportlab.lib.styles import getSampleStyleSheet
+from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 import streamlit as st
 
 # Configuración inicial de la página
@@ -9,7 +13,7 @@ st.set_page_config(
     layout="centered",
 )
 
-# --- BARRA LATERAL (Limpia, directo al selector de idioma) ---
+# --- BARRA LATERAL (Selector de Idioma de la Interfaz) ---
 ui_language = st.sidebar.selectbox(
     "🌐 Idioma de la Interfaz / UI Language",
     ["Español", "English", "Português", "Italiano", "Français", "中文 (Chinese)"],
@@ -44,7 +48,7 @@ i18n_ui = {
         "spinner": "Analizando la tienda globalmente...",
         "success_preview": "¡Vista previa generada con éxito!",
         "preview_title": "🔍 Vista Previa del Análisis",
-        "full_report_title": "📄 Desbloquear Reporte Completo en PDF",
+        "full_report_title": "📄 Generar y Descargar Reporte Completo en PDF",
         "full_report_info": (
             "Obtené el informe técnico completo con guías de optimización paso a"
             " paso, análisis profundo de UI/UX, SEO y fricción de checkout."
@@ -52,10 +56,11 @@ i18n_ui = {
         "report_lang_label": (
             "Seleccioná el idioma para tu Reporte PDF completo:"
         ),
-        "payment_link": (
-            "[🔒 Desbloquear Reporte Completo por $19"
-            " USD](https://tu-enlace-de-pago-aqui.lemonsqueezy.com)"
-        ),
+        "btn_full_report": "💳 Pagar $19 USD y Descargar PDF",
+        "success_pdf": "¡Reporte PDF generado con éxito!",
+        "download_pdf_btn": "📥 Descargar Reporte en PDF",
+        "terms": "Términos y Condiciones",
+        "privacy": "Política de Privacidad",
         "error_url": "Por favor, ingresá una URL válida.",
         "error_api": (
             "⚠️ Por favor, ingresá tu **Groq API Key** en la barra lateral"
@@ -73,16 +78,17 @@ i18n_ui = {
         "spinner": "Analyzing store globally...",
         "success_preview": "Preview generated successfully!",
         "preview_title": "🔍 Analysis Preview",
-        "full_report_title": "📄 Unlock Full PDF Report",
+        "full_report_title": "📄 Generate & Download Full PDF Report",
         "full_report_info": (
             "Get the complete technical report with step-by-step optimization"
             " guides, deep UI/UX analysis, SEO, and checkout friction review."
         ),
         "report_lang_label": "Select the language for your full PDF report:",
-        "payment_link": (
-            "[🔒 Unlock Full Report for $19"
-            " USD](https://tu-enlace-de-pago-aqui.lemonsqueezy.com)"
-        ),
+        "btn_full_report": "💳 Pay $19 USD & Download PDF",
+        "success_pdf": "PDF report generated successfully!",
+        "download_pdf_btn": "📥 Download PDF Report",
+        "terms": "Terms of Service",
+        "privacy": "Privacy Policy",
         "error_url": "Please enter a valid URL.",
         "error_api": (
             "⚠️ Please enter your **Groq API Key** in the left sidebar to"
@@ -101,7 +107,7 @@ i18n_ui = {
         "spinner": "Analisando a loja globalmente...",
         "success_preview": "Pré-visualização gerada com sucesso!",
         "preview_title": "🔍 Visualização da Análise",
-        "full_report_title": "📄 Desbloquear Relatório Completo em PDF",
+        "full_report_title": "📄 Gerar e Baixar Relatório Completo em PDF",
         "full_report_info": (
             "Obtenha o relatório técnico completo com guias de otimização passo"
             " a passo, análise profunda de UI/UX, SEO e fricção de checkout."
@@ -109,10 +115,11 @@ i18n_ui = {
         "report_lang_label": (
             "Selecione o idioma para o seu relatório PDF completo:"
         ),
-        "payment_link": (
-            "[🔒 Desbloquear Relatório Completo por $19"
-            " USD](https://tu-enlace-de-pago-aqui.lemonsqueezy.com)"
-        ),
+        "btn_full_report": "💳 Pagar $19 USD e Baixar PDF",
+        "success_pdf": "Relatório PDF gerado com sucesso!",
+        "download_pdf_btn": "📥 Baixar Relatório em PDF",
+        "terms": "Termos de Serviço",
+        "privacy": "Política de Privacidade",
         "error_url": "Por favor, insira um URL válido.",
         "error_api": (
             "⚠️ Insira sua **Groq API Key** na barra lateral esquerda para"
@@ -131,7 +138,7 @@ i18n_ui = {
         "spinner": "Analisi del negozio in corso...",
         "success_preview": "Anteprima generata con successo!",
         "preview_title": "🔍 Anteprima dell'Analisi",
-        "full_report_title": "📄 Sblocca il Rapporto PDF Completo",
+        "full_report_title": "📄 Genera e Scarica il Rapporto PDF Completo",
         "full_report_info": (
             "Ottieni il report tecnico completo con guide di ottimizzazione"
             " dettagliate, analisi approfondita di UI/UX, SEO e attrito al"
@@ -140,10 +147,11 @@ i18n_ui = {
         "report_lang_label": (
             "Seleziona la lingua per il tuo rapporto PDF completo:"
         ),
-        "payment_link": (
-            "[🔒 Sblocca il Rapporto Completo per $19"
-            " USD](https://tu-enlace-de-pago-aqui.lemonsqueezy.com)"
-        ),
+        "btn_full_report": "💳 Paga $19 USD e Scarica il PDF",
+        "success_pdf": "Rapporto PDF generato con successo!",
+        "download_pdf_btn": "📥 Scarica Rapporto PDF",
+        "terms": "Termini di Servizio",
+        "privacy": "Informativa sulla Privacy",
         "error_url": "Si prega di inserire un URL valido.",
         "error_api": (
             "⚠️ Inserisci la tua **Groq API Key** nella barra laterale sinistra"
@@ -162,7 +170,7 @@ i18n_ui = {
         "spinner": "Analyse de la boutique en cours...",
         "success_preview": "Aperçu généré avec succès !",
         "preview_title": "🔍 Aperçu de l'Analyse",
-        "full_report_title": "📄 Déverrouiller le Rapport PDF Complet",
+        "full_report_title": "📄 Générer et Télécharger le Rapport PDF Complet",
         "full_report_info": (
             "Obtenez le rapport technique complet avec des guides"
             " d'optimisation étape par étape, une analyse approfondie UI/UX,"
@@ -171,10 +179,11 @@ i18n_ui = {
         "report_lang_label": (
             "Sélectionnez la langue de votre rapport PDF complet :"
         ),
-        "payment_link": (
-            "[🔒 Déverrouiller le Rapport Complet pour $19"
-            " USD](https://tu-enlace-de-pago-aqui.lemonsqueezy.com)"
-        ),
+        "btn_full_report": "💳 Payer 19 $ USD et Télécharger le PDF",
+        "success_pdf": "Rapport PDF généré avec succès !",
+        "download_pdf_btn": "📥 Télécharger le Rapport PDF",
+        "terms": "Conditions Générales",
+        "privacy": "Politique de Confidentialité",
         "error_url": "Veuillez entrer une URL valide.",
         "error_api": (
             "⚠️ Veuillez entrer votre **Groq API Key** dans la barre latérale"
@@ -190,15 +199,16 @@ i18n_ui = {
         "spinner": "正在全局分析商店...",
         "success_preview": "预览生成成功！",
         "preview_title": "🔍 分析预览",
-        "full_report_title": "📄 解锁完整PDF报告",
+        "full_report_title": "📄 生成并下载完整PDF报告",
         "full_report_info": (
             "获取包含分步优化指南、深入UI/UX分析、SEO和结账摩擦检查的完整技术报告。"
         ),
         "report_lang_label": "选择完整PDF报告的语言：",
-        "payment_link": (
-            "[🔒 解锁完整报告 ($19"
-            " USD)](https://tu-enlace-de-pago-aqui.lemonsqueezy.com)"
-        ),
+        "btn_full_report": "💳 支付 $19 USD 并下载 PDF",
+        "success_pdf": "PDF报告生成成功！",
+        "download_pdf_btn": "📥 下载 PDF 报告",
+        "terms": "服务条款",
+        "privacy": "隐私政策",
         "error_url": "请输入有效的网址。",
         "error_api": "⚠️ 请在左侧边栏中输入您的 **Groq API Key** 以开始。",
     },
@@ -206,7 +216,39 @@ i18n_ui = {
 
 t = i18n_ui[ui_language]
 
-# Textos dinámicos de la interfaz
+# Función para generar el PDF en memoria con ReportLab
+def generate_pdf_report(report_text, language_name):
+  buffer = io.BytesIO()
+  doc = SimpleDocTemplate(buffer, pagesize=letter)
+  styles = getSampleStyleSheet()
+  story = []
+
+  # Título principal del PDF
+  title_map = {
+      "Español": "StoreCheck AI - Reporte de Auditoría Completo",
+      "English": "StoreCheck AI - Comprehensive Audit Report",
+      "Português": "StoreCheck AI - Relatório de Auditoria Completo",
+      "Italiano": "StoreCheck AI - Rapporto di Audit Completo",
+      "Français": "StoreCheck AI - Rapport d'Audit Complet",
+      "中文 (Chinese)": "StoreCheck AI - 完整审计报告",
+  }
+
+  doc_title = title_map.get(language_name, "StoreCheck AI - Audit Report")
+  story.append(Paragraph(doc_title, styles["Heading1"]))
+  story.append(Spacer(1, 12))
+
+  # Agregar contenido del reporte párrafo por párrafo
+  for paragraph in report_text.split("\n"):
+    if paragraph.strip():
+      story.append(Paragraph(paragraph, styles["Normal"]))
+      story.append(Spacer(1, 8))
+
+  doc.build(story)
+  buffer.seek(0)
+  return buffer
+
+
+# Interfaz Principal
 st.title(t["title"])
 st.markdown(t["subtitle"])
 
@@ -260,7 +302,7 @@ if "preview_result" in st.session_state:
   st.markdown(f"### {t['full_report_title']}")
   st.info(t["full_report_info"])
 
-  # Selector de idioma estratégico para el reporte al momento de pagar
+  # Selector de idioma estratégico para el reporte
   report_language = st.selectbox(
       t["report_lang_label"],
       [
@@ -273,7 +315,57 @@ if "preview_result" in st.session_state:
       ],
   )
 
-  st.markdown(
-      f"*(Report language selected: **{report_language}**)*"
-  )
-  st.markdown(t["payment_link"])
+  # Botón para generar el informe completo y PDF (simulando post-pago o integrando con Lemon Squeezy)
+  if st.button(t["btn_full_report"]):
+    with st.spinner(t["spinner"]):
+      try:
+        full_prompt = (
+            "You are an expert e-commerce auditor and CRO specialist. Provide a"
+            f" comprehensive, deep technical audit report for the store"
+            f" {st.session_state['store_url']}, including UI/UX analysis,"
+            f" checkout friction, SEO recommendations, and step-by-step"
+            f" action items. Write the response entirely in {report_language}."
+        )
+
+        chat_completion_full = client.chat.completions.create(
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You are an AI e-commerce audit expert providing"
+                        " professional consulting reports."
+                    ),
+                },
+                {"role": "user", "content": full_prompt},
+            ],
+            model="llama3-8b-8192",
+            temperature=0.7,
+        )
+
+        full_report_text = chat_completion_full.choices[0].message.content
+
+        # Generar PDF en memoria con ReportLab
+        pdf_buffer = generate_pdf_report(full_report_text, report_language)
+
+        st.success(t["success_pdf"])
+
+        # Botón de descarga directa del PDF generado
+        st.download_button(
+            label=t["download_pdf_btn"],
+            data=pdf_buffer,
+            file_name=f"StoreCheck_AI_Audit_Report.pdf",
+            mime="application/pdf",
+        )
+
+      except Exception as e:
+        st.error(f"Error: {e}")
+
+# --- PIE DE PÁGINA (Términos y Condiciones y Privacidad) ---
+st.markdown("---")
+st.markdown(
+    f"<p style='text-align: center; font-size: 12px; color: gray;'>"
+    f"<a href='#' target='_blank'>{t['terms']}</a> | <a href='#' target='_blank'>{t['privacy']}</a>"
+    f"<br>© 2026 StoreCheck AI. Global E-commerce Audits."
+    f"</p>",
+    unsafe_allow_html=True,
+)

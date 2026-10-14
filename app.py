@@ -277,6 +277,3 @@ if "preview_result" in st.session_state:
       f"*(Report language selected: **{report_language}**)*"
   )
   st.markdown(t["payment_link"])
-      f"*(Report language selected: **{report_language}**)*"
-  )
-  st.markdown(t["payment_link"])

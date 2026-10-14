@@ -216,6 +216,22 @@ i18n_ui = {
 
 t = i18n_ui[ui_language]
 
+# Función con respaldo estricto solo para modelos de chat válidos
+def call_groq_chat(client, messages, temperature=0.7):
+  chat_models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+  last_error = None
+  for model_name in chat_models:
+    try:
+      response = client.chat.completions.create(
+          messages=messages, model=model_name, temperature=temperature
+      )
+      return response
+    except Exception as e:
+      last_error = e
+      continue
+  raise last_error
+
+
 # Interfaz Principal
 st.title(t["title"])
 st.markdown(t["subtitle"])
@@ -225,24 +241,6 @@ if not api_key:
   st.stop()
 
 client = Groq(api_key=api_key)
-
-# Obtener dinámicamente el primer modelo disponible en la cuenta de Groq
-selected_model = None
-try:
-  models_response = client.models.list()
-  # Buscar un modelo que sirva para chat (priorizando Llama)
-  for m in models_response.data:
-    if "llama" in m.id.lower():
-      selected_model = m.id
-      break
-  if not selected_model and models_response.data:
-    selected_model = models_response.data[0].id
-except Exception:
-  pass
-
-# Fallback por si falla el listado
-if not selected_model:
-  selected_model = "llama-3.3-70b-versatile"
 
 store_url = st.text_input(t["url_label"], placeholder=t["url_placeholder"])
 
@@ -259,17 +257,12 @@ if st.button(t["btn_preview"]):
             f" {ui_language}."
         )
 
-        chat_completion = client.chat.completions.create(
-            messages=[
-                {
-                    "role": "system",
-                    "content": "You are an AI e-commerce audit expert.",
-                },
-                {"role": "user", "content": preview_prompt},
-            ],
-            model=selected_model,
-            temperature=0.7,
-        )
+        messages = [
+            {"role": "system", "content": "You are an AI e-commerce audit expert."},
+            {"role": "user", "content": preview_prompt},
+        ]
+
+        chat_completion = call_groq_chat(client, messages, temperature=0.7)
 
         preview_result = chat_completion.choices[0].message.content
         st.success(t["success_preview"])
@@ -277,7 +270,7 @@ if st.button(t["btn_preview"]):
         st.session_state["preview_result"] = preview_result
         st.session_state["store_url"] = store_url
       except Exception as e:
-        st.error(f"Error al conectar con Groq ({selected_model}): {e}")
+        st.error(f"Error al conectar con Groq: {e}")
 
 if "preview_result" in st.session_state:
   st.markdown("---")
@@ -341,22 +334,20 @@ if "preview_result" in st.session_state:
             f" action items. Write the response entirely in {report_language}."
         )
 
-        chat_completion_full = client.chat.completions.create(
-            messages=[
-                {
-                    "role": "system",
-                    "content": (
-                        "You are an AI e-commerce audit expert providing"
-                        " professional consulting reports."
-                    ),
-                },
-                {"role": "user", "content": full_prompt},
-            ],
-            model=selected_model,
-            temperature=0.7,
-        )
+        messages = [
+            {
+                "role": "system",
+                "content": (
+                    "You are an AI e-commerce audit expert providing"
+                    " professional consulting reports."
+                ),
+            },
+            {"role": "user", "content": full_prompt},
+        ]
 
+        chat_completion_full = call_groq_chat(client, messages, temperature=0.7)
         full_report_text = chat_completion_full.choices[0].message.content
+
         pdf_buffer = generate_pdf_report(full_report_text, report_language)
 
         st.success(t["success_pdf"])
@@ -368,7 +359,7 @@ if "preview_result" in st.session_state:
         )
 
       except Exception as e:
-        st.error(f"Error al generar el reporte con ({selected_model}): {e}")
+        st.error(f"Error al generar el reporte completo: {e}")
 
 # --- PIE DE PÁGINA ---
 st.markdown("---")

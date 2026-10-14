@@ -223,7 +223,6 @@ def generate_pdf_report(report_text, language_name):
   styles = getSampleStyleSheet()
   story = []
 
-  # Título principal del PDF
   title_map = {
       "Español": "StoreCheck AI - Reporte de Auditoría Completo",
       "English": "StoreCheck AI - Comprehensive Audit Report",
@@ -237,7 +236,6 @@ def generate_pdf_report(report_text, language_name):
   story.append(Paragraph(doc_title, styles["Heading1"]))
   story.append(Spacer(1, 12))
 
-  # Agregar contenido del reporte párrafo por párrafo
   for paragraph in report_text.split("\n"):
     if paragraph.strip():
       story.append(Paragraph(paragraph, styles["Normal"]))
@@ -281,7 +279,7 @@ if st.button(t["btn_preview"]):
                 },
                 {"role": "user", "content": preview_prompt},
             ],
-            model="llama3-8b-8192",
+            model="llama-3.1-8b-instant",
             temperature=0.7,
         )
 
@@ -302,7 +300,6 @@ if "preview_result" in st.session_state:
   st.markdown(f"### {t['full_report_title']}")
   st.info(t["full_report_info"])
 
-  # Selector de idioma estratégico para el reporte
   report_language = st.selectbox(
       t["report_lang_label"],
       [
@@ -315,7 +312,6 @@ if "preview_result" in st.session_state:
       ],
   )
 
-  # Botón para generar el informe completo y PDF (simulando post-pago o integrando con Lemon Squeezy)
   if st.button(t["btn_full_report"]):
     with st.spinner(t["spinner"]):
       try:
@@ -338,22 +334,20 @@ if "preview_result" in st.session_state:
                 },
                 {"role": "user", "content": full_prompt},
             ],
-            model="llama3-8b-8192",
+            model="llama-3.1-8b-instant",
             temperature=0.7,
         )
 
         full_report_text = chat_completion_full.choices[0].message.content
 
-        # Generar PDF en memoria con ReportLab
         pdf_buffer = generate_pdf_report(full_report_text, report_language)
 
         st.success(t["success_pdf"])
 
-        # Botón de descarga directa del PDF generado
         st.download_button(
             label=t["download_pdf_btn"],
             data=pdf_buffer,
-            file_name=f"StoreCheck_AI_Audit_Report.pdf",
+            file_name="StoreCheck_AI_Audit_Report.pdf",
             mime="application/pdf",
         )
 

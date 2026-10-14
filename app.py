@@ -19,11 +19,11 @@ ui_language = st.sidebar.selectbox(
     ["Español", "English", "Português", "Italiano", "Français", "中文 (Chinese)"],
 )
 
-# Ingreso directo de la API Key en la barra lateral (idéntico a tu entorno local)
+# Ingreso directo de la API Key en la barra lateral
 api_key = st.sidebar.text_input(
     "🔑 Groq API Key:",
     type="password",
-    help="Pegá aquí tu clave de Groq (la misma que usaste en tu localhost).",
+    help="Pegá aquí tu clave de Groq.",
 )
 
 # Diccionario completo de textos de la interfaz (i18n)
@@ -209,9 +209,14 @@ i18n_ui = {
 t = i18n_ui[ui_language]
 
 
-# Función de llamada con respaldo de modelos de chat estables
+# Función blindada con respaldo y diagnóstico automático
 def call_groq_chat(client, messages, temperature=0.7):
-  chat_models = ["llama-3.3-70b-versatile", "llama-3.1-8b-instant"]
+  chat_models = [
+      "openai/gpt-oss-120b",
+      "openai/gpt-oss-20b",
+      "llama-3.3-70b-versatile",
+      "llama-3.1-8b-instant",
+  ]
   last_error = None
   for model_name in chat_models:
     try:
@@ -222,7 +227,20 @@ def call_groq_chat(client, messages, temperature=0.7):
     except Exception as e:
       last_error = e
       continue
-  raise last_error
+
+  # Si todos fallan, consultamos directamente a la API qué modelos tiene disponibles esta key
+  try:
+    models_resp = client.models.list()
+    available_ids = [m.id for m in models_resp.data]
+    raise Exception(
+        f"Ningún modelo estándar funcionó. Modelos habilitados en tu cuenta de"
+        f" Groq: {available_ids}. Último error: {last_error}"
+    )
+  except Exception as inner_e:
+    raise Exception(
+        f"Error de conexión con Groq. Detalle: {last_error} | Listado:"
+        f" {inner_e}"
+    )
 
 
 # Interfaz Principal
@@ -263,7 +281,7 @@ if st.button(t["btn_preview"]):
         st.session_state["preview_result"] = preview_result
         st.session_state["store_url"] = store_url
       except Exception as e:
-        st.error(f"Error al conectar con Groq: {e}")
+        st.error(f"❌ {e}")
 
 if "preview_result" in st.session_state:
   st.markdown("---")
@@ -352,7 +370,7 @@ if "preview_result" in st.session_state:
         )
 
       except Exception as e:
-        st.error(f"Error al generar el reporte completo: {e}")
+        st.error(f"❌ {e}")
 
 # --- PIE DE PÁGINA ---
 st.markdown("---")

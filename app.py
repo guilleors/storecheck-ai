@@ -220,11 +220,9 @@ def call_groq_chat(client_instance, messages, temperature=0.7):
             "El cliente de servicio no está disponible en este momento."
         )
 
-    # Modelos activos actuales en Groq
     chat_models = [
         "llama-3.3-70b-versatile",
-        "llama-3.2-90b-vision-preview",
-        "llama-3.2-3b-preview",
+        "llama-3.1-8b-instant",
     ]
     last_error = None
     for model_name in chat_models:

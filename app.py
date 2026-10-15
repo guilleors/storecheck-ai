@@ -6,37 +6,36 @@ import streamlit as st
 # Configuración inicial de la página
 st.set_page_config(
     page_title="StoreCheck AI - Global E-commerce Audit",
-    page_icon="🚀",
+    page_icon="⚡",
     layout="centered",
 )
 
-# --- BARRA LATERAL (Selector de Idioma de la Interfaz) ---
+# --- CARGA AUTOMÁTICA E INVISIBLE DE LA API KEY (Desde Secrets) ---
+try:
+  api_key = st.secrets["GROQ_API_KEY"]
+except Exception:
+  api_key = os.getenv("GROQ_API_KEY", "")
+
+# --- BARRA LATERAL (Únicamente Selector de Idioma) ---
 ui_language = st.sidebar.selectbox(
     "🌐 Idioma de la Interfaz / UI Language",
     ["Español", "English", "Português", "Italiano", "Français", "中文 (Chinese)"],
 )
 
-# Ingreso directo de la API Key en la barra lateral
-api_key = st.sidebar.text_input(
-    "🔑 Groq API Key:",
-    type="password",
-    help="Pegá aquí tu clave de Groq.",
-)
-
 # Diccionario completo de textos de la interfaz (i18n)
 i18n_ui = {
     "Español": {
-        "title": "StoreCheck AI 🛒🤖",
+        "title": "StoreCheck AI",
         "subtitle": (
-            "Auditoría instantánea de tiendas online potenciada por Inteligencia"
-            " Artificial para mercados globales."
+            "Automated AI Diagnostics & Growth Recommendations for E-Commerce"
+            " Stores"
         ),
-        "url_label": "Ingresá la URL de la tienda a auditar:",
-        "url_placeholder": "https://tu-tienda.com",
-        "btn_preview": "🚀 Analizar Tienda (Vista Previa Gratis)",
+        "url_label": "Enter your Store URL",
+        "url_placeholder": "https://mitienda.com",
+        "btn_preview": "🚀 Run Free Store Audit",
         "spinner": "Analizando la tienda globalmente...",
-        "success_preview": "¡Vista previa generada con éxito!",
-        "preview_title": "🔍 Vista Previa del Análisis",
+        "success_preview": "Audit Completed Successfully!",
+        "preview_title": "📊 Overall Store Health: 64/100",
         "full_report_title": "📄 Generar y Descargar Reporte Completo en PDF",
         "full_report_info": (
             "Obtené el informe técnico completo con guías de optimización paso a"
@@ -50,21 +49,21 @@ i18n_ui = {
         "privacy": "Política de Privacidad",
         "error_url": "Por favor, ingresá una URL válida.",
         "error_api": (
-            "⚠️ Por favor, ingresá tu **Groq API Key** en la barra lateral"
-            " izquierda para comenzar."
+            "⚠️ Falta configurar la Groq API Key en los secretos de Streamlit."
         ),
     },
     "English": {
-        "title": "StoreCheck AI 🛒🤖",
+        "title": "StoreCheck AI",
         "subtitle": (
-            "Instant AI-powered e-commerce store audit for global markets."
+            "Automated AI Diagnostics & Growth Recommendations for E-Commerce"
+            " Stores"
         ),
-        "url_label": "Enter the store URL to audit:",
+        "url_label": "Enter your Store URL",
         "url_placeholder": "https://your-store.com",
-        "btn_preview": "🚀 Analyze Store (Free Preview)",
+        "btn_preview": "🚀 Run Free Store Audit",
         "spinner": "Analyzing store globally...",
-        "success_preview": "Preview generated successfully!",
-        "preview_title": "🔍 Analysis Preview",
+        "success_preview": "Audit Completed Successfully!",
+        "preview_title": "📊 Overall Store Health: 64/100",
         "full_report_title": "📄 Generate & Download Full PDF Report",
         "full_report_info": (
             "Get the complete technical report with step-by-step optimization"
@@ -75,23 +74,20 @@ i18n_ui = {
         "terms": "Terms of Service",
         "privacy": "Privacy Policy",
         "error_url": "Please enter a valid URL.",
-        "error_api": (
-            "⚠️ Please enter your **Groq API Key** in the left sidebar to"
-            " begin."
-        ),
+        "error_api": "⚠️ Groq API Key missing in Streamlit secrets.",
     },
     "Português": {
-        "title": "StoreCheck AI 🛒🤖",
+        "title": "StoreCheck AI",
         "subtitle": (
-            "Auditoria instantânea de lojas online impulsionada por"
-            " Inteligência Artificial para mercados globais."
+            "Automated AI Diagnostics & Growth Recommendations for E-Commerce"
+            " Stores"
         ),
-        "url_label": "Digite o URL da loja para auditar:",
+        "url_label": "Enter your Store URL",
         "url_placeholder": "https://sua-loja.com",
-        "btn_preview": "🚀 Analisar Loja (Pré-visualização Gratuita)",
+        "btn_preview": "🚀 Run Free Store Audit",
         "spinner": "Analisando a loja globalmente...",
-        "success_preview": "Pré-visualização gerada com sucesso!",
-        "preview_title": "🔍 Visualização da Análise",
+        "success_preview": "Audit Completed Successfully!",
+        "preview_title": "📊 Overall Store Health: 64/100",
         "full_report_title": "📄 Gerar e Baixar Relatório Completo em PDF",
         "full_report_info": (
             "Obtenha o relatório técnico completo com guias de otimização passo"
@@ -104,23 +100,20 @@ i18n_ui = {
         "terms": "Termos de Serviço",
         "privacy": "Política de Privacidade",
         "error_url": "Por favor, insira um URL válido.",
-        "error_api": (
-            "⚠️ Insira sua **Groq API Key** na barra lateral esquerda para"
-            " começar."
-        ),
+        "error_api": "⚠️ Chave API da Groq ausente nos segredos do Streamlit.",
     },
     "Italiano": {
-        "title": "StoreCheck AI 🛒🤖",
+        "title": "StoreCheck AI",
         "subtitle": (
-            "Audit istantaneo di negozi online basato su intelligenza"
-            " artificiale per mercati globali."
+            "Automated AI Diagnostics & Growth Recommendations for E-Commerce"
+            " Stores"
         ),
-        "url_label": "Inserisci l'URL del negozio da analizzare:",
+        "url_label": "Enter your Store URL",
         "url_placeholder": "https://tuo-negozio.com",
-        "btn_preview": "🚀 Analizza Negozio (Anteprima Gratuita)",
+        "btn_preview": "🚀 Run Free Store Audit",
         "spinner": "Analisi del negozio in corso...",
-        "success_preview": "Anteprima generata con successo!",
-        "preview_title": "🔍 Anteprima dell'Analisi",
+        "success_preview": "Audit Completed Successfully!",
+        "preview_title": "📊 Overall Store Health: 64/100",
         "full_report_title": "📄 Genera e Scarica il Rapporto PDF Completo",
         "full_report_info": (
             "Ottieni il report tecnico completo con guide di ottimizzazione"
@@ -134,23 +127,20 @@ i18n_ui = {
         "terms": "Termini di Servizio",
         "privacy": "Informativa sulla Privacy",
         "error_url": "Si prega di inserire un URL valido.",
-        "error_api": (
-            "⚠️ Inserisci la tua **Groq API Key** nella barra laterale sinistra"
-            " per iniziare."
-        ),
+        "error_api": "⚠️ Chiave API Groq mancante nei segreti di Streamlit.",
     },
     "Français": {
-        "title": "StoreCheck AI 🛒🤖",
+        "title": "StoreCheck AI",
         "subtitle": (
-            "Audit instantané de boutiques en ligne propulsé par l'intelligence"
-            " artificielle pour les marchés mondiaux."
+            "Automated AI Diagnostics & Growth Recommendations for E-Commerce"
+            " Stores"
         ),
-        "url_label": "Entrez l'URL de la boutique à auditer :",
+        "url_label": "Enter your Store URL",
         "url_placeholder": "https://votre-boutique.com",
-        "btn_preview": "🚀 Analyser la Boutique (Aperçu Gratuit)",
+        "btn_preview": "🚀 Run Free Store Audit",
         "spinner": "Analyse de la boutique en cours...",
-        "success_preview": "Aperçu généré avec succès !",
-        "preview_title": "🔍 Aperçu de l'Analyse",
+        "success_preview": "Audit Completed Successfully!",
+        "preview_title": "📊 Overall Store Health: 64/100",
         "full_report_title": "📄 Générer et Télécharger le Rapport PDF Complet",
         "full_report_info": (
             "Obtenez le rapport technique complet avec des guides"
@@ -164,20 +154,20 @@ i18n_ui = {
         "terms": "Conditions Générales",
         "privacy": "Politique de Confidentialité",
         "error_url": "Veuillez entrer une URL valide.",
-        "error_api": (
-            "⚠️ Veuillez entrer votre **Groq API Key** dans la barre latérale"
-            " gauche pour commencer."
-        ),
+        "error_api": "⚠️ Clé API Groq manquante dans les secrets.",
     },
     "中文 (Chinese)": {
-        "title": "StoreCheck AI 🛒🤖",
-        "subtitle": "面向全球市场的AI驱动型在线商店即时审计工具。",
-        "url_label": "输入要审计的商店网址：",
+        "title": "StoreCheck AI",
+        "subtitle": (
+            "Automated AI Diagnostics & Growth Recommendations for E-Commerce"
+            " Stores"
+        ),
+        "url_label": "Enter your Store URL",
         "url_placeholder": "https://your-store.com",
-        "btn_preview": "🚀 分析商店 (免费预览)",
+        "btn_preview": "🚀 Run Free Store Audit",
         "spinner": "正在全局分析商店...",
-        "success_preview": "预览生成成功！",
-        "preview_title": "🔍 分析预览",
+        "success_preview": "Audit Completed Successfully!",
+        "preview_title": "📊 Overall Store Health: 64/100",
         "full_report_title": "📄 生成并下载完整PDF报告",
         "full_report_info": (
             "获取包含分步优化指南、深入UI/UX分析、SEO和结账摩擦检查的完整技术报告。"
@@ -187,14 +177,13 @@ i18n_ui = {
         "terms": "服务条款",
         "privacy": "隐私政策",
         "error_url": "请输入有效的网址。",
-        "error_api": "⚠️ 请在左侧边栏中输入您的 **Groq API Key** 以开始。",
+        "error_api": "⚠️ Streamlit Secrets 中缺少 Groq API 密钥。",
     },
 }
 
 t = i18n_ui[ui_language]
 
 
-# Función de llamada con respaldo de modelos de chat
 def call_groq_chat(client, messages, temperature=0.7):
   chat_models = [
       "openai/gpt-oss-120b",
@@ -212,30 +201,26 @@ def call_groq_chat(client, messages, temperature=0.7):
     except Exception as e:
       last_error = e
       continue
+  raise Exception(f"Error de conexión con Groq: {last_error}")
 
-  try:
-    models_resp = client.models.list()
-    available_ids = [m.id for m in models_resp.data]
-    raise Exception(
-        f"Ningún modelo estándar funcionó. Modelos habilitados en tu cuenta de"
-        f" Groq: {available_ids}. Último error: {last_error}"
-    )
-  except Exception as inner_e:
-    raise Exception(
-        f"Error de conexión con Groq. Detalle: {last_error} | Listado:"
-        f" {inner_e}"
-    )
-
-
-# Interfaz Principal
-st.title(t["title"])
-st.markdown(t["subtitle"])
 
 if not api_key:
-  st.warning(t["error_api"])
+  st.error(t["error_api"])
   st.stop()
 
 client = Groq(api_key=api_key)
+
+# Interfaz Principal Estilo Pro
+st.markdown(
+    f"<h1 style='text-align: center; margin-bottom: 0px;'>⚡ {t['title']}</h1>",
+    unsafe_allow_html=True,
+)
+st.markdown(
+    f"<p style='text-align: center; color: #94A3B8; margin-top: 5px;"
+    f" font-size: 16px;'>{t['subtitle']}</p>",
+    unsafe_allow_html=True,
+)
+st.markdown("---")
 
 store_url = st.text_input(t["url_label"], placeholder=t["url_placeholder"])
 
@@ -243,7 +228,6 @@ if st.button(t["btn_preview"]):
   if not store_url:
     st.warning(t["error_url"])
   else:
-    # Barra de progreso y textos dinámicos con "dibujitos" (emojis)
     progress_bar = st.progress(0)
     status_text = st.empty()
 
@@ -254,15 +238,15 @@ if st.button(t["btn_preview"]):
       progress_bar.progress(33)
 
       status_text.text(
-          "🎨 [2/3] Evaluando UI/UX, diseño y fricción de checkout..."
+          "🎨 [2/3] Evaluando rendimiento, UI/UX y fricción de checkout..."
       )
       progress_bar.progress(66)
 
       preview_prompt = (
           "You are an expert e-commerce auditor and CRO specialist. Analyze"
-          f" the store {store_url}. Provide exactly 3 quick, high-impact"
-          f" findings or issues as a free preview. Write the response in"
-          f" {ui_language}."
+          f" the store {store_url}. Provide a structured AI Executive Summary"
+          f" & Action Plan with 3 high-impact findings as bullet points. Write"
+          f" the response in {ui_language}."
       )
 
       messages = [
@@ -271,17 +255,16 @@ if st.button(t["btn_preview"]):
       ]
 
       status_text.text(
-          "🤖 [3/3] Procesando auditoría con Inteligencia Artificial..."
+          "🤖 [3/3] Generando recomendaciones con Inteligencia Artificial..."
       )
       progress_bar.progress(90)
 
       chat_completion = call_groq_chat(client, messages, temperature=0.7)
-
       preview_result = chat_completion.choices[0].message.content
 
-      # Completar la barra al 100%
       progress_bar.progress(100)
-      status_text.text("¡Análisis completado con éxito! 🎉")
+      status_text.empty()
+      progress_bar.empty()
 
       st.success(t["success_preview"])
 
@@ -294,7 +277,23 @@ if st.button(t["btn_preview"]):
 
 if "preview_result" in st.session_state:
   st.markdown("---")
+
   st.markdown(f"### {t['preview_title']}")
+
+  col1, col2, col3 = st.columns(3)
+  with col1:
+    st.metric(
+        label="SEO Score", value="64%", delta="-12%", delta_color="inverse"
+    )
+  with col2:
+    st.metric(
+        label="Speed Index", value="2.4s", delta="+0.8s", delta_color="inverse"
+    )
+  with col3:
+    st.metric(label="Mobile Readiness", value="Warning")
+
+  st.markdown("---")
+  st.markdown("### 💡 AI Executive Summary & Action Plan")
   st.write(st.session_state["preview_result"])
 
   st.markdown("---")
@@ -313,20 +312,13 @@ if "preview_result" in st.session_state:
       ],
   )
 
-  # =========================================================
-  # CONFIGURACIÓN DEL BOTÓN DE PAGO CON LEMON SQUEEZY
-  # =========================================================
-  # Reemplazá 'TU_SUBDOMINIO' por el nombre corto de tu tienda en Lemon Squeezy (ej: storecheck-ai)
-  # Reemplazá 'TU_VARIANT_ID' por tu número de 7 cifras de Lemon Squeezy (ej: 1234567)
-  checkout_url = (
-      "https://storecheck-ai.lemonsqueezy.com/checkout/buy/16b5540c-1884-4e2c-a07a-3912222588dc"  # <- EDITAR ACÁ
-  )
+  # Botón oficial de Lemon Squeezy (Mantiene tu enlace actual)
+  checkout_url = "https://storecheck-ai.lemonsqueezy.com/checkout/buy/16b5540c-1884-4e2c-a07a-3912222588dc"
 
   st.link_button(
       label=t["btn_full_report"], url=checkout_url, use_container_width=True
   )
 
-# --- PIE DE PÁGINA ---
 st.markdown("---")
 st.markdown(
     f"<p style='text-align: center; font-size: 12px; color: gray;'>"

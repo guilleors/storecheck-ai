@@ -391,7 +391,7 @@ if "preview_result" in st.session_state:
     )
 
     # URL base de tu producto en Lemon Squeezy con el parámetro de redirección automática incorporado
-    checkout_url = "https://storecheck-ai.lemonsqueezy.com/checkout/buy/16b5540c-1884-4e2c-a07a-3912222588dc?checkout[redirect_url]=https://tu-app.streamlit.app/?success=true"
+    checkout_url = "https://storecheck-ai.lemonsqueezy.com/checkout/buy/16b5540c-1884-4e2c-a07a-3912222588dc?checkout[redirect_url]=https://tu-app.streamlit.app/?success=true&test=true"
 
     st.link_button(
         label=t["btn_full_report"], url=checkout_url, use_container_width=True

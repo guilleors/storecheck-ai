@@ -222,23 +222,46 @@ def call_groq_chat(client_instance, messages, temperature=0.7):
 
     try:
         models_response = client_instance.models.list()
-        # Filtramos estrictamente descartando modelos de guard, clasificadores o herramientas
-        available_models = [
-            m.id
-            for m in models_response.data
-            if "llama" in m.id.lower()
-            and not any(
-                bad_word in m.id.lower()
-                for bad_word in ["guard", "classifier", "tool", "moderation"]
-            )
+        all_models = [m.id for m in models_response.data]
+
+        # Palabras clave que identifican modelos de seguridad/clasificación que NO son para chat
+        excluded_keywords = ["guard", "classifier", "tool", "moderation", "vision"]
+
+        # Filtramos dejando solo modelos de texto/chat válidos
+        chat_models = [
+            m_id
+            for m_id in all_models
+            if not any(kw in m_id.lower() for kw in excluded_keywords)
         ]
     except Exception as e:
         raise Exception(f"No se pudo consultar los modelos disponibles: {e}")
 
-    if not available_models:
-        raise Exception(
-            "La API de Groq no devolvió modelos de chat activos para esta cuenta."
+    # Fallback directo en caso de que el filtro excluya todo por error
+    if not chat_models:
+        chat_models = all_models
+
+    # Ordenamos priorizando los modelos potentes (70b / versatile / instant)
+    chat_models.sort(
+        key=lambda name: (
+            0
+            if "70b" in name.lower() or "versatile" in name.lower()
+            else (1 if "instant" in name.lower() else 2)
         )
+    )
+
+    last_error = None
+    # Iteramos sobre los modelos de chat hasta que uno responda
+    for model_id in chat_models:
+        try:
+            response = client_instance.chat.completions.create(
+                messages=messages, model=model_id, temperature=temperature
+            )
+            return response
+        except Exception as e:
+            last_error = e
+            continue
+
+    raise Exception(f"Error de comunicación con el servicio: {last_error}")
 
     # Ordenamos para darle prioridad a los modelos 70b y versátiles/instructivos
     available_models.sort(

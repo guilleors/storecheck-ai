@@ -391,11 +391,29 @@ if "preview_result" in st.session_state:
     )
 
     # URL base de tu producto en Lemon Squeezy con el parámetro de redirección automática incorporado
-    checkout_url = "https://storecheck-ai.lemonsqueezy.com/checkout/buy/16b5540c-1884-4e2c-a07a-3912222588dc?checkout[redirect_url]=https://tu-app.streamlit.app/?success=true&test=true"
+    # Verificamos si la URL trae el parámetro de pago exitoso
+    is_paid = st.query_params.get("success", "false").lower() == "true"
 
-    st.link_button(
-        label=t["btn_full_report"], url=checkout_url, use_container_width=True
-    )
+    # 💡 CAMBIÁ A "True" TEMPORALMENTE AQUÍ ABAJO PARA PROBAR EL PDF EN LOCAL:
+    if is_paid:  # <-- Poné 'if True:' acá para forzarlo a verse ya mismo
+        st.success("🎉 ¡Pago verificado con éxito! Tu reporte PDF está listo.")
+        pdf_bytes = generate_pdf_report(
+            st.session_state["store_url"],
+            st.session_state["preview_result"],
+            report_language,
+        )
+        st.download_button(
+            label=t.get("btn_download_unlocked", "📥 Descargar mi Reporte PDF Completo"),
+            data=pdf_bytes,
+            file_name="StoreCheck_AI_Audit_Report.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+        )
+    else:
+        checkout_url = "https://storecheck-ai.lemonsqueezy.com/checkout/buy/16b5540c-1884-4e2c-a07a-3912222588dc?checkout[redirect_url]=https://tu-app.streamlit.app/?success=true&test=true"
+        st.link_button(
+            label=t["btn_full_report"], url=checkout_url, use_container_width=True
+        )
 
 st.markdown("---")
 st.markdown(

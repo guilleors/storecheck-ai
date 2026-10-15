@@ -2,6 +2,44 @@ import io
 import os
 from groq import Groq
 import streamlit as st
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+
+def generate_pdf_report(store_url, audit_text, language):
+  buffer = io.BytesIO()
+  p = canvas.Canvas(buffer, pagesize=letter)
+  width, height = letter
+
+  # Encabezado
+  p.setFont("Helvetica-Bold", 16)
+  p.drawString(54, height - 50, "StoreCheck AI - Reporte de Auditoría")
+
+  p.setFont("Helvetica", 10)
+  p.drawString(54, height - 70, f"Sitio analizado: {store_url}")
+  p.drawString(54, height - 85, f"Idioma del reporte: {language}")
+
+  p.line(54, height - 95, width - 54, height - 95)
+
+  # Contenido del reporte
+  textobject = p.beginText(54, height - 120)
+  textobject.setFont("Helvetica", 10)
+
+  # Dividimos el texto de la IA para que entre en el PDF
+  for line in audit_text.split("\n"):
+    # Limpiamos saltos largos o cortamos si es necesario
+    if len(line) > 90:
+      chunks = [line[i : i + 90] for i in range(0, len(line), 90)]
+      for chunk in chunks:
+        textobject.textLine(chunk)
+    else:
+      textobject.textLine(line)
+
+  p.drawText(textobject)
+  p.showPage()
+  p.save()
+
+  buffer.seek(0)
+  return buffer.getvalue()
 
 # Configuración inicial de la página (OBLIGATORIO PRIMERO)
 st.set_page_config(

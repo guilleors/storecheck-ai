@@ -220,34 +220,46 @@ def call_groq_chat(client_instance, messages, temperature=0.7):
             "El cliente de servicio no está disponible en este momento."
         )
 
-    # Consulta directa a Groq: pedimos la lista de modelos permitidos para esta cuenta
     try:
         models_response = client_instance.models.list()
-        available_models = [m.id for m in models_response.data]
+        # Filtramos estrictamente descartando modelos de guard, clasificadores o herramientas
+        available_models = [
+            m.id
+            for m in models_response.data
+            if "llama" in m.id.lower()
+            and not any(
+                bad_word in m.id.lower()
+                for bad_word in ["guard", "classifier", "tool", "moderation"]
+            )
+        ]
     except Exception as e:
         raise Exception(f"No se pudo consultar los modelos disponibles: {e}")
 
     if not available_models:
         raise Exception(
-            "La API de Groq no devolvió modelos activos para esta cuenta."
+            "La API de Groq no devolvió modelos de chat activos para esta cuenta."
         )
 
-    # Seleccionamos automáticamente el primer modelo de Llama disponible y con acceso
-    selected_model = available_models[0]
+    # Ordenamos para darle prioridad a los modelos 70b y versátiles/instructivos
+    available_models.sort(
+        key=lambda name: (
+            0 if "70b" in name.lower() or "versatile" in name.lower() else 1
+        )
+    )
+
+    last_error = None
+    # Iteramos sobre los modelos de chat válidos por si alguno falla
     for model_id in available_models:
-        if "llama" in model_id.lower() and "guard" not in model_id.lower():
-            selected_model = model_id
-            break
+        try:
+            response = client_instance.chat.completions.create(
+                messages=messages, model=model_id, temperature=temperature
+            )
+            return response
+        except Exception as e:
+            last_error = e
+            continue
 
-    try:
-        response = client_instance.chat.completions.create(
-            messages=messages, model=selected_model, temperature=temperature
-        )
-        return response
-    except Exception as e:
-        raise Exception(
-            f"Error al ejecutar con el modelo '{selected_model}': {e}"
-        )
+    raise Exception(f"Error de comunicación con el servicio: {last_error}")
 
 
 # Interfaz Principal Estilo Pro

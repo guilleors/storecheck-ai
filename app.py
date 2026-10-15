@@ -220,16 +220,34 @@ def call_groq_chat(client_instance, messages, temperature=0.7):
             "El cliente de servicio no está disponible en este momento."
         )
 
+    # Consulta directa a Groq: pedimos la lista de modelos permitidos para esta cuenta
     try:
-        # Apuntamos directamente y sin rodeos al modelo principal y activo de Groq
+        models_response = client_instance.models.list()
+        available_models = [m.id for m in models_response.data]
+    except Exception as e:
+        raise Exception(f"No se pudo consultar los modelos disponibles: {e}")
+
+    if not available_models:
+        raise Exception(
+            "La API de Groq no devolvió modelos activos para esta cuenta."
+        )
+
+    # Seleccionamos automáticamente el primer modelo de Llama disponible y con acceso
+    selected_model = available_models[0]
+    for model_id in available_models:
+        if "llama" in model_id.lower() and "guard" not in model_id.lower():
+            selected_model = model_id
+            break
+
+    try:
         response = client_instance.chat.completions.create(
-            messages=messages,
-            model="llama-3.3-70b-versatile",
-            temperature=temperature,
+            messages=messages, model=selected_model, temperature=temperature
         )
         return response
     except Exception as e:
-        raise Exception(f"Error de comunicación con el servicio: {e}")
+        raise Exception(
+            f"Error al ejecutar con el modelo '{selected_model}': {e}"
+        )
 
 
 # Interfaz Principal Estilo Pro

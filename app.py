@@ -220,10 +220,25 @@ def call_groq_chat(client_instance, messages, temperature=0.7):
             "El cliente de servicio no está disponible en este momento."
         )
 
-    chat_models = [
-        "llama-3.3-70b-versatile",
-        "llama-3.1-8b-instant",
-    ]
+    # Consulta dinámica: le pedimos a Groq la lista real de modelos disponibles para tu API Key
+    chat_models = []
+    try:
+        models_response = client_instance.models.list()
+        # Filtramos los modelos que sean de la familia llama y sirvan para chat
+        chat_models = [
+            m.id
+            for m in models_response.data
+            if "llama" in m.id.lower() and "guard" not in m.id.lower()
+        ]
+        # Ordenamos para priorizar los más recientes (ej. 3.3 o 3.1)
+        chat_models.sort(key=lambda x: "3.3" not in x)
+    except Exception:
+        pass
+
+    # Fallback de respaldo por si falla la consulta de modelos
+    if not chat_models:
+        chat_models = ["llama-3.3-70b-versatile", "llama-3.1-70b-versatile"]
+
     last_error = None
     for model_name in chat_models:
         try:
@@ -234,6 +249,7 @@ def call_groq_chat(client_instance, messages, temperature=0.7):
         except Exception as e:
             last_error = e
             continue
+
     raise Exception(f"Error de comunicación con el servicio: {last_error}")
 
 

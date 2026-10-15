@@ -10,29 +10,34 @@ st.set_page_config(
     layout="centered",
 )
 
-# Carga y limpieza estricta de la API Key
-api_key = ""
+
+# Inicialización persistente y cacheada para evitar pérdida de contexto en reruns de Streamlit
+@st.cache_resource
+def get_groq_client():
+    token = ""
+    try:
+        if "GROQ_API_KEY" in st.secrets:
+            token = str(st.secrets["GROQ_API_KEY"])
+        elif "general" in st.secrets and "GROQ_API_KEY" in st.secrets["general"]:
+            token = str(st.secrets["general"]["GROQ_API_KEY"])
+    except Exception:
+        pass
+
+    if not token:
+        token = os.getenv("GROQ_API_KEY", "")
+
+    token = token.strip().strip('"').strip("'")
+    if token:
+        os.environ["GROQ_API_KEY"] = token
+
+    return Groq(api_key=token)
+
+
+# Carga segura del cliente cacheado
 try:
-    if "GROQ_API_KEY" in st.secrets:
-        api_key = str(st.secrets["GROQ_API_KEY"])
-    elif "general" in st.secrets and "GROQ_API_KEY" in st.secrets["general"]:
-        api_key = str(st.secrets["general"]["GROQ_API_KEY"])
+    client = get_groq_client()
 except Exception:
-    pass
-
-if not api_key:
-    api_key = os.getenv("GROQ_API_KEY", "")
-
-# Limpiar espacios ocultos, retornos de carro o saltos de línea de Windows (\r\n)
-api_key = api_key.strip()
-os.environ["GROQ_API_KEY"] = api_key
-
-if not api_key:
-    st.warning("⚠️ Falta configurar la Groq API Key en los secretos de Streamlit.")
-    st.stop()
-
-# Inicialización segura del cliente de Groq
-client = Groq(api_key=api_key)
+    client = None
 
 # --- BARRA LATERAL (Únicamente Selector de Idioma) ---
 ui_language = st.sidebar.selectbox(
@@ -67,7 +72,7 @@ i18n_ui = {
         "privacy": "Política de Privacidad",
         "error_url": "Por favor, ingresá una URL válida.",
         "error_api": (
-            "⚠️ Falta configurar la Groq API Key en los secretos de Streamlit."
+            "⚠️ Error de inicialización del entorno o configuración ausente."
         ),
     },
     "English": {
@@ -92,7 +97,7 @@ i18n_ui = {
         "terms": "Terms of Service",
         "privacy": "Privacy Policy",
         "error_url": "Please enter a valid URL.",
-        "error_api": "⚠️ Groq API Key missing in Streamlit secrets.",
+        "error_api": "⚠️ Environment initialization error or missing configuration.",
     },
     "Português": {
         "title": "StoreCheck AI",
@@ -118,7 +123,9 @@ i18n_ui = {
         "terms": "Termos de Serviço",
         "privacy": "Política de Privacidade",
         "error_url": "Por favor, insira um URL válido.",
-        "error_api": "⚠️ Chave API da Groq ausente nos segredos do Streamlit.",
+        "error_api": (
+            "⚠️ Erro de inicialização do ambiente ou configuração ausente."
+        ),
     },
     "Italiano": {
         "title": "StoreCheck AI",
@@ -145,7 +152,9 @@ i18n_ui = {
         "terms": "Termini di Servizio",
         "privacy": "Informativa sulla Privacy",
         "error_url": "Si prega di inserire un URL valido.",
-        "error_api": "⚠️ Chiave API Groq mancante nei segreti di Streamlit.",
+        "error_api": (
+            "⚠️ Errore di inizializzazione dell'ambiente o configurazione mancante."
+        ),
     },
     "Français": {
         "title": "StoreCheck AI",
@@ -172,7 +181,10 @@ i18n_ui = {
         "terms": "Conditions Générales",
         "privacy": "Politique de Confidentialité",
         "error_url": "Veuillez entrer une URL valide.",
-        "error_api": "⚠️ Clé API Groq manquante dans les secrets.",
+        "error_api": (
+            "⚠️ Erreur d'initialisation de l'environnement ou configuration"
+            " manquante."
+        ),
     },
     "中文 (Chinese)": {
         "title": "StoreCheck AI",
@@ -195,15 +207,19 @@ i18n_ui = {
         "terms": "服务条款",
         "privacy": "隐私政策",
         "error_url": "请输入有效的网址。",
-        "error_api": "⚠️ Streamlit Secrets 中缺少 Groq API 密钥。",
+        "error_api": "⚠️ 环境初始化错误或缺少配置。",
     },
 }
 
 t = i18n_ui[ui_language]
 
 
-def call_groq_chat(client, messages, temperature=0.7):
-    # Modelos oficiales soportados por Groq
+def call_groq_chat(client_instance, messages, temperature=0.7):
+    if not client_instance:
+        raise Exception(
+            "El cliente de servicio no está disponible en este momento."
+        )
+
     chat_models = [
         "llama-3.3-70b-versatile",
         "llama-3.1-8b-instant",
@@ -211,14 +227,14 @@ def call_groq_chat(client, messages, temperature=0.7):
     last_error = None
     for model_name in chat_models:
         try:
-            response = client.chat.completions.create(
+            response = client_instance.chat.completions.create(
                 messages=messages, model=model_name, temperature=temperature
             )
             return response
         except Exception as e:
             last_error = e
             continue
-    raise Exception(f"Error de conexión con Groq: {last_error}")
+    raise Exception(f"Error de comunicación con el servicio: {last_error}")
 
 
 # Interfaz Principal Estilo Pro

@@ -26,7 +26,6 @@ def generate_pdf_report(store_url, audit_text, language):
   textobject = p.beginText(54, height - 120)
   textobject.setFont("Helvetica", 10)
 
-  # Dividimos el texto de la IA para que entre en el PDF
   for line in audit_text.split("\n"):
     if len(line) > 90:
       chunks = [line[i : i + 90] for i in range(0, len(line), 90)]
@@ -79,11 +78,43 @@ try:
 except Exception:
   client = None
 
-# --- BARRA LATERAL (Únicamente Selector de Idioma) ---
+# --- BARRA LATERAL ---
 ui_language = st.sidebar.selectbox(
     "🌐 Idioma de la Interfaz / UI Language",
     ["Español", "English", "Português", "Italiano", "Français", "中文 (Chinese)"],
 )
+
+# --- NUEVO: Carga Masiva de Google Sheets oculta en un Expander en la Barra Lateral ---
+with st.sidebar.expander("📊 Carga Masiva (Google Sheets)"):
+  sheet_link = st.text_input(
+      "Link de Google Sheets (Público):",
+      placeholder="https://docs.google.com/spreadsheets/d/TU_ID/edit",
+      key="input_sheet_link",
+  )
+  if sheet_link:
+    try:
+      csv_url = (
+          sheet_link.split("/edit")[0] + "/export?format=csv"
+          if "/edit" in sheet_link
+          else sheet_link
+      )
+      df_sheets = pd.read_csv(csv_url)
+      st.success(f"¡Planilla leída! {len(df_sheets)} filas.")
+
+      columna_elegida = st.selectbox(
+          "Columna con URLs:", df_sheets.columns, key="col_sheets_sb"
+      )
+      urls_disponibles = df_sheets[columna_elegida].dropna().tolist()
+
+      if urls_disponibles:
+        url_desde_sheet = st.selectbox(
+            "Seleccionar tienda:", urls_disponibles, key="url_select_sb"
+        )
+        if st.button("Cargar esta tienda en el auditor", key="btn_load_sheet"):
+          st.session_state["url_desde_sheet"] = url_desde_sheet
+          st.rerun()
+    except Exception as e:
+      st.error(f"Error al leer planilla: {e}")
 
 # Diccionario completo de textos de la interfaz (i18n)
 i18n_ui = {
@@ -296,7 +327,7 @@ def call_groq_chat(client_instance, messages, temperature=0.7):
   raise Exception(f"Error de comunicación con el servicio: {last_error}")
 
 
-# Interfaz Principal Estilo Pro
+# Interfaz Principal Estilo Pro (Limpia y enfocada en el usuario final)
 st.markdown(
     f"<h1 style='text-align: center; margin-bottom: 0px;'>⚡ {t['title']}</h1>",
     unsafe_allow_html=True,
@@ -308,49 +339,11 @@ st.markdown(
 )
 st.markdown("---")
 
-# --- NUEVO: Selector de origen (URL individual o Google Sheets masivo) ---
-modo_entrada = st.radio(
-    "Seleccioná el origen de las tiendas a auditar:",
-    ["URL Individual (Manual)", "Google Sheets (Masivo)"],
-    horizontal=True,
+# Recupera la URL seleccionada de la planilla en el sidebar (si la usaron) o arranca vacío
+default_url = st.session_state.get("url_desde_sheet", "")
+store_url = st.text_input(
+    t["url_label"], value=default_url, placeholder=t["url_placeholder"]
 )
-
-# --- PANTALLA PRINCIPAL LIMPIA (Para el usuario final) ---
-store_url = st.text_input(t["url_label"], placeholder=t["url_placeholder"])
-
-# --- MODO MASIVO OCULTO EN LA BARRA LATERAL (Solo para uso interno/tuyo) ---
-with st.sidebar.expander("📊 Carga Masiva (Google Sheets)"):
-  sheet_link = st.text_input(
-      "Link de Google Sheets (Público):",
-      placeholder="https://docs.google.com/spreadsheets/d/TU_ID/edit",
-  )
-  if sheet_link:
-    try:
-      csv_url = (
-          sheet_link.split("/edit")[0] + "/export?format=csv"
-          if "/edit" in sheet_link
-          else sheet_link
-      )
-      df_sheets = pd.read_csv(csv_url)
-      st.success(f"¡Planilla leída! {len(df_sheets)} filas.")
-
-      columna_elegida = st.selectbox(
-          "Columna con URLs:", df_sheets.columns, key="col_sheets_sidebar"
-      )
-      urls_disponibles = df_sheets[columna_elegida].dropna().tolist()
-
-      if urls_disponibles:
-        url_desde_sheet = st.selectbox(
-            "Seleccionar tienda de la lista:",
-            urls_disponibles,
-            key="url_select_sidebar",
-        )
-        # Si selecciona una de la lista, pisa o complementa al input principal
-        if url_desde_sheet:
-          store_url = url_desde_sheet
-          st.info(f"Tienda seleccionada de la planilla: {store_url}")
-    except Exception as e:
-      st.error(f"Error al leer la planilla: {e}")
 
 if st.button(t["btn_preview"]):
   if not store_url:

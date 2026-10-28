@@ -1,9 +1,11 @@
 import io
 import os
 from groq import Groq
+import pandas as pd
 import streamlit as st
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
+
 
 def generate_pdf_report(store_url, audit_text, language):
   buffer = io.BytesIO()
@@ -26,7 +28,6 @@ def generate_pdf_report(store_url, audit_text, language):
 
   # Dividimos el texto de la IA para que entre en el PDF
   for line in audit_text.split("\n"):
-    # Limpiamos saltos largos o cortamos si es necesario
     if len(line) > 90:
       chunks = [line[i : i + 90] for i in range(0, len(line), 90)]
       for chunk in chunks:
@@ -41,6 +42,7 @@ def generate_pdf_report(store_url, audit_text, language):
   buffer.seek(0)
   return buffer.getvalue()
 
+
 # Configuración inicial de la página (OBLIGATORIO PRIMERO)
 st.set_page_config(
     page_title="StoreCheck AI - Global E-commerce Audit",
@@ -52,30 +54,30 @@ st.set_page_config(
 # Inicialización persistente y cacheada para evitar pérdida de contexto en reruns de Streamlit
 @st.cache_resource
 def get_groq_client():
-    token = ""
-    try:
-        if "GROQ_API_KEY" in st.secrets:
-            token = str(st.secrets["GROQ_API_KEY"])
-        elif "general" in st.secrets and "GROQ_API_KEY" in st.secrets["general"]:
-            token = str(st.secrets["general"]["GROQ_API_KEY"])
-    except Exception:
-        pass
+  token = ""
+  try:
+    if "GROQ_API_KEY" in st.secrets:
+      token = str(st.secrets["GROQ_API_KEY"])
+    elif "general" in st.secrets and "GROQ_API_KEY" in st.secrets["general"]:
+      token = str(st.secrets["general"]["GROQ_API_KEY"])
+  except Exception:
+    pass
 
-    if not token:
-        token = os.getenv("GROQ_API_KEY", "")
+  if not token:
+    token = os.getenv("GROQ_API_KEY", "")
 
-    token = token.strip().strip('"').strip("'")
-    if token:
-        os.environ["GROQ_API_KEY"] = token
+  token = token.strip().strip('"').strip("'")
+  if token:
+    os.environ["GROQ_API_KEY"] = token
 
-    return Groq(api_key=token)
+  return Groq(api_key=token)
 
 
 # Carga segura del cliente cacheado
 try:
-    client = get_groq_client()
+  client = get_groq_client()
 except Exception:
-    client = None
+  client = None
 
 # --- BARRA LATERAL (Únicamente Selector de Idioma) ---
 ui_language = st.sidebar.selectbox(
@@ -253,74 +255,45 @@ t = i18n_ui[ui_language]
 
 
 def call_groq_chat(client_instance, messages, temperature=0.7):
-    if not client_instance:
-        raise Exception(
-            "El cliente de servicio no está disponible en este momento."
-        )
+  if not client_instance:
+    raise Exception("El cliente de servicio no está disponible en este momento.")
 
+  try:
+    models_response = client_instance.models.list()
+    all_models = [m.id for m in models_response.data]
+
+    excluded_keywords = ["guard", "classifier", "tool", "moderation", "vision"]
+    chat_models = [
+        m_id
+        for m_id in all_models
+        if not any(kw in m_id.lower() for kw in excluded_keywords)
+    ]
+  except Exception as e:
+    raise Exception(f"No se pudo consultar los modelos disponibles: {e}")
+
+  if not chat_models:
+    chat_models = all_models
+
+  chat_models.sort(
+      key=lambda name: (
+          0
+          if "70b" in name.lower() or "versatile" in name.lower()
+          else (1 if "instant" in name.lower() else 2)
+      )
+  )
+
+  last_error = None
+  for model_id in chat_models:
     try:
-        models_response = client_instance.models.list()
-        all_models = [m.id for m in models_response.data]
-
-        # Palabras clave que identifican modelos de seguridad/clasificación que NO son para chat
-        excluded_keywords = ["guard", "classifier", "tool", "moderation", "vision"]
-
-        # Filtramos dejando solo modelos de texto/chat válidos
-        chat_models = [
-            m_id
-            for m_id in all_models
-            if not any(kw in m_id.lower() for kw in excluded_keywords)
-        ]
+      response = client_instance.chat.completions.create(
+          messages=messages, model=model_id, temperature=temperature
+      )
+      return response
     except Exception as e:
-        raise Exception(f"No se pudo consultar los modelos disponibles: {e}")
+      last_error = e
+      continue
 
-    # Fallback directo en caso de que el filtro excluya todo por error
-    if not chat_models:
-        chat_models = all_models
-
-    # Ordenamos priorizando los modelos potentes (70b / versatile / instant)
-    chat_models.sort(
-        key=lambda name: (
-            0
-            if "70b" in name.lower() or "versatile" in name.lower()
-            else (1 if "instant" in name.lower() else 2)
-        )
-    )
-
-    last_error = None
-    # Iteramos sobre los modelos de chat hasta que uno responda
-    for model_id in chat_models:
-        try:
-            response = client_instance.chat.completions.create(
-                messages=messages, model=model_id, temperature=temperature
-            )
-            return response
-        except Exception as e:
-            last_error = e
-            continue
-
-    raise Exception(f"Error de comunicación con el servicio: {last_error}")
-
-    # Ordenamos para darle prioridad a los modelos 70b y versátiles/instructivos
-    available_models.sort(
-        key=lambda name: (
-            0 if "70b" in name.lower() or "versatile" in name.lower() else 1
-        )
-    )
-
-    last_error = None
-    # Iteramos sobre los modelos de chat válidos por si alguno falla
-    for model_id in available_models:
-        try:
-            response = client_instance.chat.completions.create(
-                messages=messages, model=model_id, temperature=temperature
-            )
-            return response
-        except Exception as e:
-            last_error = e
-            continue
-
-    raise Exception(f"Error de comunicación con el servicio: {last_error}")
+  raise Exception(f"Error de comunicación con el servicio: {last_error}")
 
 
 # Interfaz Principal Estilo Pro
@@ -335,128 +308,168 @@ st.markdown(
 )
 st.markdown("---")
 
-store_url = st.text_input(t["url_label"], placeholder=t["url_placeholder"])
+# --- NUEVO: Selector de origen (URL individual o Google Sheets masivo) ---
+modo_entrada = st.radio(
+    "Seleccioná el origen de las tiendas a auditar:",
+    ["URL Individual (Manual)", "Google Sheets (Masivo)"],
+    horizontal=True,
+)
+
+store_url = ""
+
+if modo_entrada == "URL Individual (Manual)":
+  store_url = st.text_input(t["url_label"], placeholder=t["url_placeholder"])
+else:
+  sheet_link = st.text_input(
+      "Link de Google Sheets (Debe ser público / 'Cualquier persona con el enlace'):",
+      placeholder="https://docs.google.com/spreadsheets/d/TU_ID/edit",
+  )
+  if sheet_link:
+    try:
+      # Convierte el link normal de Google Sheets al formato de exportación CSV directo
+      csv_url = (
+          sheet_link.split("/edit")[0] + "/export?format=csv"
+          if "/edit" in sheet_link
+          else sheet_link
+      )
+      df_sheets = pd.read_csv(csv_url)
+      st.success(f"¡Planilla leída con éxito! {len(df_sheets)} filas encontradas.")
+
+      columna_elegida = st.selectbox(
+          "Seleccioná la columna que contiene las URLs de las tiendas:",
+          df_sheets.columns,
+      )
+      urls_disponibles = df_sheets[columna_elegida].dropna().tolist()
+
+      if urls_disponibles:
+        store_url = st.selectbox(
+            "Seleccioná la tienda de la planilla a auditar:", urls_disponibles
+        )
+      else:
+        st.warning("La columna seleccionada no contiene URLs válidas.")
+    except Exception as e:
+      st.error(
+          f"No se pudo leer la planilla. Verificá que el enlace sea público: {e}"
+      )
 
 if st.button(t["btn_preview"]):
-    if not store_url:
-        st.warning(t["error_url"])
-    else:
-        progress_bar = st.progress(0)
-        status_text = st.empty()
+  if not store_url:
+    st.warning(t["error_url"])
+  else:
+    progress_bar = st.progress(0)
+    status_text = st.empty()
 
-        try:
-            status_text.text(
-                "🌐 [1/3] Conectando y escaneando la estructura de la tienda..."
-            )
-            progress_bar.progress(33)
+    try:
+      status_text.text(
+          "🌐 [1/3] Conectando y escaneando la estructura de la tienda..."
+      )
+      progress_bar.progress(33)
 
-            status_text.text(
-                "🎨 [2/3] Evaluando rendimiento, UI/UX y fricción de checkout..."
-            )
-            progress_bar.progress(66)
+      status_text.text(
+          "🎨 [2/3] Evaluando rendimiento, UI/UX y fricción de checkout..."
+      )
+      progress_bar.progress(66)
 
-            preview_prompt = (
-                "You are an expert e-commerce auditor and CRO specialist. Analyze"
-                f" the store {store_url}. Provide a structured AI Executive Summary"
-                f" & Action Plan with 3 high-impact findings as bullet points. Write"
-                f" the response in {ui_language}."
-            )
+      preview_prompt = (
+          "You are an expert e-commerce auditor and CRO specialist. Analyze"
+          f" the store {store_url}. Provide a structured AI Executive Summary"
+          f" & Action Plan with 3 high-impact findings as bullet points. Write"
+          f" the response in {ui_language}."
+      )
 
-            messages = [
-                {
-                    "role": "system",
-                    "content": "You are an AI e-commerce audit expert.",
-                },
-                {"role": "user", "content": preview_prompt},
-            ]
+      messages = [
+          {"role": "system", "content": "You are an AI e-commerce audit expert."},
+          {"role": "user", "content": preview_prompt},
+      ]
 
-            status_text.text(
-                "🤖 [3/3] Generando recomendaciones con Inteligencia Artificial..."
-            )
-            progress_bar.progress(90)
+      status_text.text(
+          "🤖 [3/3] Generando recomendaciones con Inteligencia Artificial..."
+      )
+      progress_bar.progress(90)
 
-            chat_completion = call_groq_chat(client, messages, temperature=0.7)
-            preview_result = chat_completion.choices[0].message.content
+      chat_completion = call_groq_chat(client, messages, temperature=0.7)
+      preview_result = chat_completion.choices[0].message.content
 
-            progress_bar.progress(100)
-            status_text.empty()
-            progress_bar.empty()
+      progress_bar.progress(100)
+      status_text.empty()
+      progress_bar.empty()
 
-            st.success(t["success_preview"])
+      st.success(t["success_preview"])
 
-            st.session_state["preview_result"] = preview_result
-            st.session_state["store_url"] = store_url
-        except Exception as e:
-            progress_bar.empty()
-            status_text.empty()
-            st.error(f"❌ {e}")
+      st.session_state["preview_result"] = preview_result
+      st.session_state["store_url"] = store_url
+    except Exception as e:
+      progress_bar.empty()
+      status_text.empty()
+      st.error(f"❌ {e}")
 
 if "preview_result" in st.session_state:
-    st.markdown("---")
+  st.markdown("---")
 
-    st.markdown(f"### {t['preview_title']}")
+  st.markdown(f"### {t['preview_title']}")
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric(
-            label="SEO Score", value="64%", delta="-12%", delta_color="inverse"
-        )
-    with col2:
-        st.metric(
-            label="Speed Index", value="2.4s", delta="+0.8s", delta_color="inverse"
-        )
-    with col3:
-        st.metric(label="Mobile Readiness", value="Warning")
-
-    st.markdown("---")
-    st.markdown("### 💡 AI Executive Summary & Action Plan")
-    st.write(st.session_state["preview_result"])
-
-    st.markdown("---")
-    st.markdown(f"### {t['full_report_title']}")
-    st.info(t["full_report_info"])
-
-    report_language = st.selectbox(
-        t["report_lang_label"],
-        [
-            "Español",
-            "English",
-            "Português",
-            "Italiano",
-            "Français",
-            "中文 (Chinese)",
-        ],
+  col1, col2, col3 = st.columns(3)
+  with col1:
+    st.metric(
+        label="SEO Score", value="64%", delta="-12%", delta_color="inverse"
     )
+  with col2:
+    st.metric(
+        label="Speed Index", value="2.4s", delta="+0.8s", delta_color="inverse"
+    )
+  with col3:
+    st.metric(label="Mobile Readiness", value="Warning")
 
-    # Verificamos si la URL trae el parámetro de pago exitoso
-    is_paid = st.query_params.get("success", "false").lower() == "true"
+  st.markdown("---")
+  st.markdown("### 💡 AI Executive Summary & Action Plan")
+  st.write(st.session_state["preview_result"])
 
-    if is_paid:
-        st.success("🎉 ¡Pago verificado con éxito! Tu reporte PDF está listo.")
-        pdf_bytes = generate_pdf_report(
-            st.session_state["store_url"],
-            st.session_state["preview_result"],
-            report_language,
-        )
-        st.download_button(
-            label=t.get("btn_download_unlocked", "📥 Descargar mi Reporte PDF Completo"),
-            data=pdf_bytes,
-            file_name="StoreCheck_AI_Audit_Report.pdf",
-            mime="application/pdf",
-            use_container_width=True,
-        )
-    else:
-        # URL de Lemon Squeezy para producción (sin &test=true y con tu dominio real)
-        checkout_url = "https://storecheck-ai.lemonsqueezy.com/checkout/buy/16b5540c-1884-4e2c-a07a-3912222588dc?checkout[redirect_url]=https://storecheck-ai.streamlit.app//?success=true"
+  st.markdown("---")
+  st.markdown(f"### {t['full_report_title']}")
+  st.info(t["full_report_info"])
 
-        st.link_button(
-            label=t["btn_full_report"], url=checkout_url, use_container_width=True
-        )
+  report_language = st.selectbox(
+      t["report_lang_label"],
+      [
+          "Español",
+          "English",
+          "Português",
+          "Italiano",
+          "Français",
+          "中文 (Chinese)",
+      ],
+  )
+
+  is_paid = st.query_params.get("success", "false").lower() == "true"
+
+  if is_paid:
+    st.success("🎉 ¡Pago verificado con éxito! Tu reporte PDF está listo.")
+    pdf_bytes = generate_pdf_report(
+        st.session_state["store_url"],
+        st.session_state["preview_result"],
+        report_language,
+    )
+    st.download_button(
+        label=t.get(
+            "btn_download_unlocked", "📥 Descargar mi Reporte PDF Completo"
+        ),
+        data=pdf_bytes,
+        file_name="StoreCheck_AI_Audit_Report.pdf",
+        mime="application/pdf",
+        use_container_width=True,
+    )
+  else:
+    checkout_url = "https://storecheck-ai.lemonsqueezy.com/checkout/buy/16b5540c-1884-4e2c-a07a-3912222588dc?checkout[redirect_url]=https://storecheck-ai.streamlit.app//?success=true"
+
+    st.link_button(
+        label=t["btn_full_report"], url=checkout_url, use_container_width=True
+    )
 
 st.markdown("---")
 st.markdown(
     f"<p style='text-align: center; font-size: 12px; color: gray;'>"
-    f"<a href='#' target='_blank'>{t['terms']}</a> | <a href='#' target='_blank'>{t['privacy']}</a>"
+    f"<a href='#' target='_blank'>{t['terms']}</a> | <a href='#'"
+    f" target='_blank'>{t['privacy']}</a>"
     f"<br>© 2026 StoreCheck AI. Global E-commerce Audits."
     f"</p>",
     unsafe_allow_html=True,

@@ -315,42 +315,42 @@ modo_entrada = st.radio(
     horizontal=True,
 )
 
-store_url = ""
+# --- PANTALLA PRINCIPAL LIMPIA (Para el usuario final) ---
+store_url = st.text_input(t["url_label"], placeholder=t["url_placeholder"])
 
-if modo_entrada == "URL Individual (Manual)":
-  store_url = st.text_input(t["url_label"], placeholder=t["url_placeholder"])
-else:
+# --- MODO MASIVO OCULTO EN LA BARRA LATERAL (Solo para uso interno/tuyo) ---
+with st.sidebar.expander("📊 Carga Masiva (Google Sheets)"):
   sheet_link = st.text_input(
-      "Link de Google Sheets (Debe ser público / 'Cualquier persona con el enlace'):",
+      "Link de Google Sheets (Público):",
       placeholder="https://docs.google.com/spreadsheets/d/TU_ID/edit",
   )
   if sheet_link:
     try:
-      # Convierte el link normal de Google Sheets al formato de exportación CSV directo
       csv_url = (
           sheet_link.split("/edit")[0] + "/export?format=csv"
           if "/edit" in sheet_link
           else sheet_link
       )
       df_sheets = pd.read_csv(csv_url)
-      st.success(f"¡Planilla leída con éxito! {len(df_sheets)} filas encontradas.")
+      st.success(f"¡Planilla leída! {len(df_sheets)} filas.")
 
       columna_elegida = st.selectbox(
-          "Seleccioná la columna que contiene las URLs de las tiendas:",
-          df_sheets.columns,
+          "Columna con URLs:", df_sheets.columns, key="col_sheets_sidebar"
       )
       urls_disponibles = df_sheets[columna_elegida].dropna().tolist()
 
       if urls_disponibles:
-        store_url = st.selectbox(
-            "Seleccioná la tienda de la planilla a auditar:", urls_disponibles
+        url_desde_sheet = st.selectbox(
+            "Seleccionar tienda de la lista:",
+            urls_disponibles,
+            key="url_select_sidebar",
         )
-      else:
-        st.warning("La columna seleccionada no contiene URLs válidas.")
+        # Si selecciona una de la lista, pisa o complementa al input principal
+        if url_desde_sheet:
+          store_url = url_desde_sheet
+          st.info(f"Tienda seleccionada de la planilla: {store_url}")
     except Exception as e:
-      st.error(
-          f"No se pudo leer la planilla. Verificá que el enlace sea público: {e}"
-      )
+      st.error(f"Error al leer la planilla: {e}")
 
 if st.button(t["btn_preview"]):
   if not store_url:

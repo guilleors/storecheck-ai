@@ -8,119 +8,6 @@ import streamlit as st
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 
-
-def scrape_store_data(url):
-  """Extrae datos reales del sitio y busca indicios de carrito, checkout y pagos."""
-  try:
-    headers = {
-        "User-Agent": (
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-        )
-    }
-    if not url.startswith("http://") and not url.startswith("https://"):
-      url = "https://" + url
-
-    response = requests.get(url, headers=headers, timeout=10)
-    if response.status_code != 200:
-      return False, f"Código de estado HTTP: {response.status_code}"
-
-    soup = BeautifulSoup(response.text, "html.parser")
-
-    # Extraer título y meta descripción
-    title = soup.title.string.strip() if soup.title else "Sin título"
-    meta_desc = ""
-    desc_tag = soup.find(
-        "meta", attrs={"name": lambda x: x and x.lower() == "description"}
-    )
-    if desc_tag:
-      meta_desc = desc_tag.get("content", "").strip()
-
-    # Detectar plataforma de e-commerce
-    html_content = response.text.lower()
-    platform = "Personalizada / Genérica"
-    if "shopify" in html_content or "cdn.shopify.com" in html_content:
-      platform = "Shopify"
-    elif "woocommerce" in html_content or "wp-content" in html_content:
-      platform = "WooCommerce / WordPress"
-    elif "prestashop" in html_content:
-      platform = "PrestaShop"
-    elif "tiendanube" in html_content or "nuvemshop" in html_content:
-      platform = "Tiendanube"
-
-    # Detectar elementos de compra / checkout (Mystery Shopper indicators)
-    has_cart_button = (
-        bool(soup.find_all(class_=lambda x: x and "cart" in x.lower()))
-        or "carrito" in html_content
-        or "bag" in html_content
-    )
-    has_checkout_link = (
-        "checkout" in html_content
-        or "finalizar" in html_content
-        or "pagar" in html_content
-    )
-    
-    # Detectar pasarelas de pago comunes en el HTML
-    payment_gateways = []
-    if "mercadopago" in html_content: payment_gateways.append("MercadoPago")
-    if "paypal" in html_content: payment_gateways.append("PayPal")
-    if "stripe" in html_content: payment_gateways.append("Stripe")
-    if "transferencia" in html_content or "transfer" in html_content: payment_gateways.append("Transferencia Bancaria")
-
-    # Limpiar scripts/estilos y extraer texto visible para el análisis
-    for script in soup(["script", "style", "nav", "footer"]):
-      script.extract()
-    visible_text = soup.get_text(separator=" ", strip=True)[:2500]
-
-    scraped_data = {
-        "title": title,
-        "meta_description": meta_desc,
-        "platform": platform,
-        "has_cart_button": has_cart_button,
-        "has_checkout_link": has_checkout_link,
-        "payment_gateways": payment_gateways if payment_gateways else ["No detectadas explícitamente"],
-        "raw_text": visible_text,
-    }
-    return True, scraped_data
-  except Exception as e:
-    return False, str(e)
-
-
-def generate_pdf_report(store_url, audit_text, language):
-  buffer = io.BytesIO()
-  p = canvas.Canvas(buffer, pagesize=letter)
-  width, height = letter
-
-  # Encabezado
-  p.setFont("Helvetica-Bold", 16)
-  p.drawString(54, height - 50, "StoreCheck AI - Reporte de Auditoría Completo")
-
-  p.setFont("Helvetica", 10)
-  p.drawString(54, height - 70, f"Sitio analizado: {store_url}")
-  p.drawString(54, height - 85, f"Idioma del reporte: {language}")
-
-  p.line(54, height - 95, width - 54, height - 95)
-
-  # Contenido del reporte
-  textobject = p.beginText(54, height - 120)
-  textobject.setFont("Helvetica", 10)
-
-  for line in audit_text.split("\n"):
-    if len(line) > 90:
-      chunks = [line[i : i + 90] for i in range(0, len(line), 90)]
-      for chunk in chunks:
-        textobject.textLine(chunk)
-    else:
-      textobject.textLine(line)
-
-  p.drawText(textobject)
-  p.showPage()
-  p.save()
-
-  buffer.seek(0)
-  return buffer.getvalue()
-
-
 # Configuración inicial de la página
 st.set_page_config(
     page_title="StoreCheck AI - Global E-commerce Audit",
@@ -128,32 +15,177 @@ st.set_page_config(
     layout="centered",
 )
 
+# --- MANEJADOR DE PÁGINAS LEGALES INTERNAS ---
+legal_page = st.query_params.get("page", "main")
+
+if legal_page == "terms":
+    st.markdown("<p><a href='/' style='color: #3B82F6; text-decoration: underline;'>← Volver a la app principal</a></p>", unsafe_allow_html=True)
+    st.markdown("## Términos y Condiciones — StoreCheck AI")
+    st.markdown("""
+    **1. Objeto del Servicio**  
+    StoreCheck AI es una plataforma automatizada de auditoría y diagnóstico de e-commerce basada en inteligencia artificial y simulaciones de experiencia de usuario (*Mystery Shopper*). Los análisis tienen un propósito informativo y de optimización técnica.
+
+    **2. Pagos y Reembolsos**  
+    Los reportes completos en PDF se habilitan de manera digital e inmediata tras la confirmación exitosa del pago único de $19 USD. Al tratarse de un activo digital descargable, no se realizan reembolsos una vez generado el archivo.
+
+    **3. Limitación de Responsabilidad**  
+    Los resultados, puntajes y recomendaciones de optimización se generan mediante modelos algorítmicos. StoreCheck AI no garantiza un aumento directo en ventas o conversiones, ya que dependen de la implementación del usuario y factores externos del mercado.
+    """)
+    st.stop()
+
+elif legal_page == "privacy":
+    st.markdown("<p><a href='/' style='color: #3B82F6; text-decoration: underline;'>← Volver a la app principal</a></p>", unsafe_allow_html=True)
+    st.markdown("## Política de Privacidad — StoreCheck AI")
+    st.markdown("""
+    **1. Recopilación de Datos**  
+    StoreCheck AI procesa exclusivamente datos públicos de las URLs ingresadas (títulos, metadatos, estructura HTML visible y pasarelas de pago detectadas) con el único fin de generar los diagnósticos solicitados.
+
+    **2. Uso de la Información**  
+    Los datos de las tiendas analizadas y las consultas realizadas no se comercializan con terceros ni se utilizan para entrenar modelos públicos de inteligencia artificial fuera del flujo operativo del servicio.
+
+    **3. Seguridad de las Transacciones**  
+    Los pagos son procesados de forma segura a través de pasarelas externas certificadas (como Lemon Squeezy), sin que nuestra plataforma almacene datos sensibles de tarjetas de crédito o información bancaria.
+    """)
+    st.stop()
+
+
+def scrape_store_data(url):
+    """Extrae datos reales del sitio y busca indicios de carrito, checkout y pagos."""
+    try:
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+                " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            )
+        }
+        if not url.startswith("http://") and not url.startswith("https://"):
+            url = "https://" + url
+
+        response = requests.get(url, headers=headers, timeout=10)
+        if response.status_code != 200:
+            return False, f"Código de estado HTTP: {response.status_code}"
+
+        soup = BeautifulSoup(response.text, "html.parser")
+
+        # Extraer título y meta descripción
+        title = soup.title.string.strip() if soup.title else "Sin título"
+        meta_desc = ""
+        desc_tag = soup.find(
+            "meta", attrs={"name": lambda x: x and x.lower() == "description"}
+        )
+        if desc_tag:
+            meta_desc = desc_tag.get("content", "").strip()
+
+        # Detectar plataforma de e-commerce
+        html_content = response.text.lower()
+        platform = "Personalizada / Genérica"
+        if "shopify" in html_content or "cdn.shopify.com" in html_content:
+            platform = "Shopify"
+        elif "woocommerce" in html_content or "wp-content" in html_content:
+            platform = "WooCommerce / WordPress"
+        elif "prestashop" in html_content:
+            platform = "PrestaShop"
+        elif "tiendanube" in html_content or "nuvemshop" in html_content:
+            platform = "Tiendanube"
+
+        # Detectar elementos de compra / checkout (Mystery Shopper indicators)
+        has_cart_button = (
+            bool(soup.find_all(class_=lambda x: x and "cart" in x.lower()))
+            or "carrito" in html_content
+            or "bag" in html_content
+        )
+        has_checkout_link = (
+            "checkout" in html_content
+            or "finalizar" in html_content
+            or "pagar" in html_content
+        )
+        
+        # Detectar pasarelas de pago comunes en el HTML
+        payment_gateways = []
+        if "mercadopago" in html_content: payment_gateways.append("MercadoPago")
+        if "paypal" in html_content: payment_gateways.append("PayPal")
+        if "stripe" in html_content: payment_gateways.append("Stripe")
+        if "transferencia" in html_content or "transfer" in html_content: payment_gateways.append("Transferencia Bancaria")
+
+        # Limpiar scripts/estilos y extraer texto visible para el análisis
+        for script in soup(["script", "style", "nav", "footer"]):
+            script.extract()
+        visible_text = soup.get_text(separator=" ", strip=True)[:2500]
+
+        scraped_data = {
+            "title": title,
+            "meta_description": meta_desc,
+            "platform": platform,
+            "has_cart_button": has_cart_button,
+            "has_checkout_link": has_checkout_link,
+            "payment_gateways": payment_gateways if payment_gateways else ["No detectadas explícitamente"],
+            "raw_text": visible_text,
+        }
+        return True, scraped_data
+    except Exception as e:
+        return False, str(e)
+
+
+def generate_pdf_report(store_url, audit_text, language):
+    buffer = io.BytesIO()
+    p = canvas.Canvas(buffer, pagesize=letter)
+    width, height = letter
+
+    # Encabezado
+    p.setFont("Helvetica-Bold", 16)
+    p.drawString(54, height - 50, "StoreCheck AI - Reporte de Auditoría Completo")
+
+    p.setFont("Helvetica", 10)
+    p.drawString(54, height - 70, f"Sitio analizado: {store_url}")
+    p.drawString(54, height - 85, f"Idioma del reporte: {language}")
+
+    p.line(54, height - 95, width - 54, height - 95)
+
+    # Contenido del reporte
+    textobject = p.beginText(54, height - 120)
+    textobject.setFont("Helvetica", 10)
+
+    for line in audit_text.split("\n"):
+        if len(line) > 90:
+            chunks = [line[i : i + 90] for i in range(0, len(line), 90)]
+            for chunk in chunks:
+                textobject.textLine(chunk)
+        else:
+            textobject.textLine(line)
+
+    p.drawText(textobject)
+    p.showPage()
+    p.save()
+
+    buffer.seek(0)
+    return buffer.getvalue()
+
 
 @st.cache_resource
 def get_groq_client():
-  token = ""
-  try:
-    if "GROQ_API_KEY" in st.secrets:
-      token = str(st.secrets["GROQ_API_KEY"])
-    elif "general" in st.secrets and "GROQ_API_KEY" in st.secrets["general"]:
-      token = str(st.secrets["general"]["GROQ_API_KEY"])
-  except Exception:
-    pass
+    token = ""
+    try:
+        if "GROQ_API_KEY" in st.secrets:
+            token = str(st.secrets["GROQ_API_KEY"])
+        elif "general" in st.secrets and "GROQ_API_KEY" in st.secrets["general"]:
+            token = str(st.secrets["general"]["GROQ_API_KEY"])
+    except Exception:
+        pass
 
-  if not token:
-    token = os.getenv("GROQ_API_KEY", "")
+    if not token:
+        token = os.getenv("GROQ_API_KEY", "")
 
-  token = token.strip().strip('"').strip("'")
-  if token:
-    os.environ["GROQ_API_KEY"] = token
+    token = token.strip().strip('"').strip("'")
+    if token:
+        os.environ["GROQ_API_KEY"] = token
 
-  return Groq(api_key=token)
+    return Groq(api_key=token)
 
 
 try:
-  client = get_groq_client()
+    client = get_groq_client()
 except Exception:
-  client = None
+    client = None
 
 # --- BARRA LATERAL ---
 ui_language = st.sidebar.selectbox(
@@ -162,35 +194,35 @@ ui_language = st.sidebar.selectbox(
 )
 
 with st.sidebar.expander("📊 Carga Masiva (Google Sheets)"):
-  sheet_link = st.text_input(
-      "Link de Google Sheets (Público):",
-      placeholder="https://docs.google.com/spreadsheets/d/TU_ID/edit",
-      key="input_sheet_link",
-  )
-  if sheet_link:
-    try:
-      csv_url = (
-          sheet_link.split("/edit")[0] + "/export?format=csv"
-          if "/edit" in sheet_link
-          else sheet_link
-      )
-      df_sheets = pd.read_csv(csv_url)
-      st.success(f"¡Planilla leída! {len(df_sheets)} filas.")
+    sheet_link = st.text_input(
+        "Link de Google Sheets (Público):",
+        placeholder="https://docs.google.com/spreadsheets/d/TU_ID/edit",
+        key="input_sheet_link",
+    )
+    if sheet_link:
+        try:
+            csv_url = (
+                sheet_link.split("/edit")[0] + "/export?format=csv"
+                if "/edit" in sheet_link
+                else sheet_link
+            )
+            df_sheets = pd.read_csv(csv_url)
+            st.success(f"¡Planilla leída! {len(df_sheets)} filas.")
 
-      columna_elegida = st.selectbox(
-          "Columna con URLs:", df_sheets.columns, key="col_sheets_sb"
-      )
-      urls_disponibles = df_sheets[columna_elegida].dropna().tolist()
+            columna_elegida = st.selectbox(
+                "Columna con URLs:", df_sheets.columns, key="col_sheets_sb"
+            )
+            urls_disponibles = df_sheets[columna_elegida].dropna().tolist()
 
-      if urls_disponibles:
-        url_desde_sheet = st.selectbox(
-            "Seleccionar tienda:", urls_disponibles, key="url_select_sb"
-        )
-        if st.button("Cargar esta tienda en el auditor", key="btn_load_sheet"):
-          st.session_state["url_desde_sheet"] = url_desde_sheet
-          st.rerun()
-    except Exception as e:
-      st.error(f"Error al leer planilla: {e}")
+            if urls_disponibles:
+                url_desde_sheet = st.selectbox(
+                    "Seleccionar tienda:", urls_disponibles, key="url_select_sb"
+                )
+                if st.button("Cargar esta tienda en el auditor", key="btn_load_sheet"):
+                    st.session_state["url_desde_sheet"] = url_desde_sheet
+                    st.rerun()
+        except Exception as e:
+            st.error(f"Error al leer planilla: {e}")
 
 # Diccionario i18n
 i18n_ui = {
@@ -302,44 +334,44 @@ t = i18n_ui[ui_language]
 
 
 def call_groq_chat(client_instance, messages, temperature=0.7):
-  if not client_instance:
-    raise Exception("El cliente de servicio no está disponible en este momento.")
+    if not client_instance:
+        raise Exception("El cliente de servicio no está disponible en este momento.")
 
-  try:
-    models_response = client_instance.models.list()
-    all_models = [m.id for m in models_response.data]
-    excluded_keywords = ["guard", "classifier", "tool", "moderation", "vision"]
-    chat_models = [
-        m_id
-        for m_id in all_models
-        if not any(kw in m_id.lower() for kw in excluded_keywords)
-    ]
-  except Exception as e:
-    raise Exception(f"No se pudo consultar los modelos disponibles: {e}")
-
-  if not chat_models:
-    chat_models = all_models
-
-  chat_models.sort(
-      key=lambda name: (
-          0
-          if "70b" in name.lower() or "versatile" in name.lower()
-          else (1 if "instant" in name.lower() else 2)
-      )
-  )
-
-  last_error = None
-  for model_id in chat_models:
     try:
-      response = client_instance.chat.completions.create(
-          messages=messages, model=model_id, temperature=temperature
-      )
-      return response
+        models_response = client_instance.models.list()
+        all_models = [m.id for m in models_response.data]
+        excluded_keywords = ["guard", "classifier", "tool", "moderation", "vision"]
+        chat_models = [
+            m_id
+            for m_id in all_models
+            if not any(kw in m_id.lower() for kw in excluded_keywords)
+        ]
     except Exception as e:
-      last_error = e
-      continue
+        raise Exception(f"No se pudo consultar los modelos disponibles: {e}")
 
-  raise Exception(f"Error de comunicación con el servicio: {last_error}")
+    if not chat_models:
+        chat_models = all_models
+
+    chat_models.sort(
+        key=lambda name: (
+            0
+            if "70b" in name.lower() or "versatile" in name.lower()
+            else (1 if "instant" in name.lower() else 2)
+        )
+    )
+
+    last_error = None
+    for model_id in chat_models:
+        try:
+            response = client_instance.chat.completions.create(
+                messages=messages, model=model_id, temperature=temperature
+            )
+            return response
+        except Exception as e:
+            last_error = e
+            continue
+
+    raise Exception(f"Error de comunicación con el servicio: {last_error}")
 
 
 # Interfaz Principal
@@ -360,174 +392,173 @@ store_url = st.text_input(
 )
 
 if st.button(t["btn_preview"]):
-  if not store_url:
-    st.warning(t["error_url"])
-  else:
-    progress_bar = st.progress(0)
-    status_text = st.empty()
+    if not store_url:
+        st.warning(t["error_url"])
+    else:
+        progress_bar = st.progress(0)
+        status_text = st.empty()
 
-    try:
-      status_text.text("🌐 [1/3] Ejecutando simulación de Mystery Shopper y escaneo web...")
-      progress_bar.progress(30)
+        try:
+            status_text.text("🌐 [1/3] Ejecutando simulación de Mystery Shopper y escaneo web...")
+            progress_bar.progress(30)
 
-      success_scraping, scraped_data = scrape_store_data(store_url)
-      if not success_scraping:
-        raise Exception(
-            f"No se pudo acceder a la tienda para realizar la simulación. Detalle: {scraped_data}"
-        )
+            success_scraping, scraped_data = scrape_store_data(store_url)
+            if not success_scraping:
+                raise Exception(
+                    f"No se pudo acceder a la tienda para realizar la simulación. Detalle: {scraped_data}"
+                )
 
-      status_text.text(
-          "🎨 [2/3] Analizando pasarelas de pago, botones de compra y fricción de checkout..."
-      )
-      progress_bar.progress(65)
+            status_text.text(
+                "🎨 [2/3] Analizando pasarelas de pago, botones de compra y fricción de checkout..."
+            )
+            progress_bar.progress(65)
 
-      # Prompt de Mystery Shopper basado en estructura real
-      preview_prompt = f"""
-      You are an expert e-commerce CRO specialist and a "Mystery Shopper" attempting to buy items on the store {store_url}.
-      Here is the real data extracted from the site:
-      - Platform: {scraped_data['platform']}
-      - Page Title: {scraped_data['title']}
-      - Meta Description: {scraped_data['meta_description']}
-      - Cart Button Detected: {scraped_data['has_cart_button']}
-      - Checkout Flow Link Detected: {scraped_data['has_checkout_link']}
-      - Payment Gateways Found: {', '.join(scraped_data['payment_gateways'])}
-      - Content Snippet: {scraped_data['raw_text'][:1200]}
+            preview_prompt = f"""
+            You are an expert e-commerce CRO specialist and a "Mystery Shopper" attempting to buy items on the store {store_url}.
+            Here is the real data extracted from the site:
+            - Platform: {scraped_data['platform']}
+            - Page Title: {scraped_data['title']}
+            - Meta Description: {scraped_data['meta_description']}
+            - Cart Button Detected: {scraped_data['has_cart_button']}
+            - Checkout Flow Link Detected: {scraped_data['has_checkout_link']}
+            - Payment Gateways Found: {', '.join(scraped_data['payment_gateways'])}
+            - Content Snippet: {scraped_data['raw_text'][:1200]}
 
-      Act as if you just tried to navigate this store as a customer trying to buy. Provide an executive teaser highlighting 3 critical friction points or conversion blockers found during your simulated shopping journey (e.g., trust issues, payment gateway gaps, friction in mobile/cart layout).
-      CRITICAL INSTRUCTION: Do NOT invent features. Do NOT provide step-by-step technical solutions. Keep it strictly as a diagnostic teaser. Write the response in {ui_language}.
-      """
+            Act as if you just tried to navigate this store as a customer trying to buy. Provide an executive teaser highlighting 3 critical friction points or conversion blockers found during your simulated shopping journey (e.g., trust issues, payment gateway gaps, friction in mobile/cart layout).
+            CRITICAL INSTRUCTION: Do NOT invent features. Do NOT provide step-by-step technical solutions. Keep it strictly as a diagnostic teaser. Write the response in {ui_language}.
+            """
 
-      messages = [
-          {"role": "system", "content": "You are an expert e-commerce Mystery Shopper and CRO auditor."},
-          {"role": "user", "content": preview_prompt},
-      ]
+            messages = [
+                {"role": "system", "content": "You are an expert e-commerce Mystery Shopper and CRO auditor."},
+                {"role": "user", "content": preview_prompt},
+            ]
 
-      status_text.text(
-          "🤖 [3/3] Generando diagnóstico de conversión basado en la experiencia de compra..."
-      )
-      progress_bar.progress(90)
+            status_text.text(
+                "🤖 [3/3] Generando diagnóstico de conversión basado en la experiencia de compra..."
+            )
+            progress_bar.progress(90)
 
-      chat_completion = call_groq_chat(client, messages, temperature=0.7)
-      preview_result = chat_completion.choices[0].message.content
+            chat_completion = call_groq_chat(client, messages, temperature=0.7)
+            preview_result = chat_completion.choices[0].message.content
 
-      progress_bar.progress(100)
-      status_text.empty()
-      progress_bar.empty()
+            progress_bar.progress(100)
+            status_text.empty()
+            progress_bar.empty()
 
-      st.success(t["success_preview"])
+            st.success(t["success_preview"])
 
-      st.session_state["preview_result"] = preview_result
-      st.session_state["store_url"] = store_url
-      st.session_state["scraped_data"] = scraped_data
+            st.session_state["preview_result"] = preview_result
+            st.session_state["store_url"] = store_url
+            st.session_state["scraped_data"] = scraped_data
 
-      if "full_report_result" in st.session_state:
-        del st.session_state["full_report_result"]
+            if "full_report_result" in st.session_state:
+                del st.session_state["full_report_result"]
 
-    except Exception as e:
-      progress_bar.empty()
-      status_text.empty()
-      st.error(f"❌ {e}")
+        except Exception as e:
+            progress_bar.empty()
+            status_text.empty()
+            st.error(f"❌ {e}")
 
 if "preview_result" in st.session_state:
-  st.markdown("---")
+    st.markdown("---")
 
-  st.markdown(f"### {t['preview_title']}")
+    st.markdown(f"### {t['preview_title']}")
 
-  col1, col2, col3 = st.columns(3)
-  with col1:
-    st.metric(
-        label="SEO Score", value="64%", delta="-12%", delta_color="inverse"
-    )
-  with col2:
-    st.metric(
-        label="Speed Index", value="2.4s", delta="+0.8s", delta_color="inverse"
-    )
-  with col3:
-    st.metric(label="Mobile Readiness", value="Warning")
-
-  st.markdown("---")
-  st.markdown("### 💡 Mystery Shopper Teaser & Findings")
-  st.write(st.session_state["preview_result"])
-
-  st.markdown("---")
-  st.markdown(f"### {t['full_report_title']}")
-  st.info(t["full_report_info"])
-
-  report_language = st.selectbox(
-      t["report_lang_label"],
-      [
-          "Español",
-          "English",
-          "Português",
-          "Italiano",
-          "Français",
-          "中文 (Chinese)",
-      ],
-  )
-
-  is_paid = st.query_params.get("success", "false").lower() == "true"
-
-  if is_paid:
-    st.success("🎉 ¡Pago verificado con éxito! Generando tu reporte PDF completo...")
-
-    if "full_report_result" not in st.session_state:
-      with st.spinner(
-          "🤖 Elaborando informe técnico profundo y guía de solución paso a paso..."
-      ):
-        sd = st.session_state["scraped_data"]
-        full_report_prompt = f"""
-            You are an advanced e-commerce CRO expert and technical consultant. Analyze the real store data from {st.session_state['store_url']}:
-            - Platform: {sd['platform']}
-            - Title: {sd['title']}
-            - Meta Description: {sd['meta_description']}
-            - Cart Button Detected: {sd['has_cart_button']}
-            - Checkout Flow Link Detected: {sd['has_checkout_link']}
-            - Payment Gateways Found: {', '.join(sd['payment_gateways'])}
-            - Content Snippet: {sd['raw_text'][:1800]}
-
-            Provide a comprehensive, deep technical audit report based strictly on these elements. Include a detailed UI/UX analysis of the buyer journey, checkout friction review, payment setup evaluation, and a complete step-by-step technical implementation guide to fix all detected conversion leaks. 
-            Write the response in {report_language}.
-            """
-        full_messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You are an advanced AI e-commerce audit expert and technical consultant."
-                ),
-            },
-            {"role": "user", "content": full_report_prompt},
-        ]
-        full_completion = call_groq_chat(client, full_messages, temperature=0.7)
-        st.session_state["full_report_result"] = (
-            full_completion.choices[0].message.content
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.metric(
+            label="SEO Score", value="64%", delta="-12%", delta_color="inverse"
         )
+    with col2:
+        st.metric(
+            label="Speed Index", value="2.4s", delta="+0.8s", delta_color="inverse"
+        )
+    with col3:
+        st.metric(label="Mobile Readiness", value="Warning")
 
-    pdf_bytes = generate_pdf_report(
-        st.session_state["store_url"],
-        st.session_state["full_report_result"],
-        report_language,
-    )
-    st.download_button(
-        label=t.get(
-            "btn_download_unlocked", "📥 Descargar mi Reporte PDF Completo"
-        ),
-        data=pdf_bytes,
-        file_name="StoreCheck_AI_Audit_Report.pdf",
-        mime="application/pdf",
-        use_container_width=True,
-    )
-  else:
-    checkout_url = "https://storecheck-ai.lemonsqueezy.com/checkout/buy/16b5540c-1884-4e2c-a07a-3912222588dc?checkout[redirect_url]=https://storecheck-ai.streamlit.app//?success=true"
+    st.markdown("---")
+    st.markdown("### 💡 Mystery Shopper Teaser & Findings")
+    st.write(st.session_state["preview_result"])
 
-    st.link_button(
-        label=t["btn_full_report"], url=checkout_url, use_container_width=True
+    st.markdown("---")
+    st.markdown(f"### {t['full_report_title']}")
+    st.info(t["full_report_info"])
+
+    report_language = st.selectbox(
+        t["report_lang_label"],
+        [
+            "Español",
+            "English",
+            "Português",
+            "Italiano",
+            "Français",
+            "中文 (Chinese)",
+        ],
     )
+
+    is_paid = st.query_params.get("success", "false").lower() == "true"
+
+    if is_paid:
+        st.success("🎉 ¡Pago verificado con éxito! Generando tu reporte PDF completo...")
+
+        if "full_report_result" not in st.session_state:
+            with st.spinner(
+                "🤖 Elaborando informe técnico profundo y guía de solución paso a paso..."
+            ):
+                sd = st.session_state["scraped_data"]
+                full_report_prompt = f"""
+                    You are an advanced e-commerce CRO expert and technical consultant. Analyze the real store data from {st.session_state['store_url']}:
+                    - Platform: {sd['platform']}
+                    - Title: {sd['title']}
+                    - Meta Description: {sd['meta_description']}
+                    - Cart Button Detected: {sd['has_cart_button']}
+                    - Checkout Flow Link Detected: {sd['has_checkout_link']}
+                    - Payment Gateways Found: {', '.join(sd['payment_gateways'])}
+                    - Content Snippet: {sd['raw_text'][:1800]}
+
+                    Provide a comprehensive, deep technical audit report based strictly on these elements. Include a detailed UI/UX analysis of the buyer journey, checkout friction review, payment setup evaluation, and a complete step-by-step technical implementation guide to fix all detected conversion leaks. 
+                    Write the response in {report_language}.
+                    """
+                full_messages = [
+                    {
+                        "role": "system",
+                        "content": (
+                            "You are an advanced AI e-commerce audit expert and technical consultant."
+                        ),
+                    },
+                    {"role": "user", "content": full_report_prompt},
+                ]
+                full_completion = call_groq_chat(client, full_messages, temperature=0.7)
+                st.session_state["full_report_result"] = (
+                    full_completion.choices[0].message.content
+                )
+
+        pdf_bytes = generate_pdf_report(
+            st.session_state["store_url"],
+            st.session_state["full_report_result"],
+            report_language,
+        )
+        st.download_button(
+            label=t.get(
+                "btn_download_unlocked", "📥 Descargar mi Reporte PDF Completo"
+            ),
+            data=pdf_bytes,
+            file_name="StoreCheck_AI_Audit_Report.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+        )
+    else:
+        checkout_url = "https://storecheck-ai.lemonsqueezy.com/checkout/buy/16b5540c-1884-4e2c-a07a-3912222588dc?checkout[redirect_url]=https://storecheck-ai.streamlit.app//?success=true"
+
+        st.link_button(
+            label=t["btn_full_report"], url=checkout_url, use_container_width=True
+        )
 
 st.markdown("---")
 st.markdown(
     f"<p style='text-align: center; font-size: 12px; color: gray;'>"
-    f"<a href='#' target='_blank'>{t['terms']}</a> | <a href='#'"
-    f" target='_blank'>{t['privacy']}</a>"
+    f"<a href='/?page=terms' style='color: #3B82F6; text-decoration: underline;'>{t['terms']}</a> | "
+    f"<a href='/?page=privacy' style='color: #3B82F6; text-decoration: underline;'>{t['privacy']}</a>"
     f"<br>© 2026 StoreCheck AI. Global E-commerce Audits."
     f"</p>",
     unsafe_allow_html=True,

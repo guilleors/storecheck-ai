@@ -1,10 +1,89 @@
 import io
 import os
+from bs4 import BeautifulSoup
 from groq import Groq
 import pandas as pd
+import requests
 import streamlit as st
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
+
+
+def scrape_store_data(url):
+  """Extrae datos reales del sitio y busca indicios de carrito, checkout y pagos."""
+  try:
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+            " (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        )
+    }
+    if not url.startswith("http://") and not url.startswith("https://"):
+      url = "https://" + url
+
+    response = requests.get(url, headers=headers, timeout=10)
+    if response.status_code != 200:
+      return False, f"Código de estado HTTP: {response.status_code}"
+
+    soup = BeautifulSoup(response.text, "html.parser")
+
+    # Extraer título y meta descripción
+    title = soup.title.string.strip() if soup.title else "Sin título"
+    meta_desc = ""
+    desc_tag = soup.find(
+        "meta", attrs={"name": lambda x: x and x.lower() == "description"}
+    )
+    if desc_tag:
+      meta_desc = desc_tag.get("content", "").strip()
+
+    # Detectar plataforma de e-commerce
+    html_content = response.text.lower()
+    platform = "Personalizada / Genérica"
+    if "shopify" in html_content or "cdn.shopify.com" in html_content:
+      platform = "Shopify"
+    elif "woocommerce" in html_content or "wp-content" in html_content:
+      platform = "WooCommerce / WordPress"
+    elif "prestashop" in html_content:
+      platform = "PrestaShop"
+    elif "tiendanube" in html_content or "nuvemshop" in html_content:
+      platform = "Tiendanube"
+
+    # Detectar elementos de compra / checkout (Mystery Shopper indicators)
+    has_cart_button = (
+        bool(soup.find_all(class_=lambda x: x and "cart" in x.lower()))
+        or "carrito" in html_content
+        or "bag" in html_content
+    )
+    has_checkout_link = (
+        "checkout" in html_content
+        or "finalizar" in html_content
+        or "pagar" in html_content
+    )
+    
+    # Detectar pasarelas de pago comunes en el HTML
+    payment_gateways = []
+    if "mercadopago" in html_content: payment_gateways.append("MercadoPago")
+    if "paypal" in html_content: payment_gateways.append("PayPal")
+    if "stripe" in html_content: payment_gateways.append("Stripe")
+    if "transferencia" in html_content or "transfer" in html_content: payment_gateways.append("Transferencia Bancaria")
+
+    # Limpiar scripts/estilos y extraer texto visible para el análisis
+    for script in soup(["script", "style", "nav", "footer"]):
+      script.extract()
+    visible_text = soup.get_text(separator=" ", strip=True)[:2500]
+
+    scraped_data = {
+        "title": title,
+        "meta_description": meta_desc,
+        "platform": platform,
+        "has_cart_button": has_cart_button,
+        "has_checkout_link": has_checkout_link,
+        "payment_gateways": payment_gateways if payment_gateways else ["No detectadas explícitamente"],
+        "raw_text": visible_text,
+    }
+    return True, scraped_data
+  except Exception as e:
+    return False, str(e)
 
 
 def generate_pdf_report(store_url, audit_text, language):
@@ -42,7 +121,7 @@ def generate_pdf_report(store_url, audit_text, language):
   return buffer.getvalue()
 
 
-# Configuración inicial de la página (OBLIGATORIO PRIMERO)
+# Configuración inicial de la página
 st.set_page_config(
     page_title="StoreCheck AI - Global E-commerce Audit",
     page_icon="⚡",
@@ -50,7 +129,6 @@ st.set_page_config(
 )
 
 
-# Inicialización persistente y cacheada para evitar pérdida de contexto en reruns de Streamlit
 @st.cache_resource
 def get_groq_client():
   token = ""
@@ -72,7 +150,6 @@ def get_groq_client():
   return Groq(api_key=token)
 
 
-# Carga segura del cliente cacheado
 try:
   client = get_groq_client()
 except Exception:
@@ -84,7 +161,6 @@ ui_language = st.sidebar.selectbox(
     ["Español", "English", "Português", "Italiano", "Français", "中文 (Chinese)"],
 )
 
-# --- Carga Masiva de Google Sheets oculta en un Expander en la Barra Lateral ---
 with st.sidebar.expander("📊 Carga Masiva (Google Sheets)"):
   sheet_link = st.text_input(
       "Link de Google Sheets (Público):",
@@ -116,7 +192,7 @@ with st.sidebar.expander("📊 Carga Masiva (Google Sheets)"):
     except Exception as e:
       st.error(f"Error al leer planilla: {e}")
 
-# Diccionario completo de textos de la interfaz (i18n)
+# Diccionario i18n
 i18n_ui = {
     "Español": {
         "title": "StoreCheck AI",
@@ -125,7 +201,7 @@ i18n_ui = {
         "url_placeholder": "https://mitienda.com",
         "btn_preview": "🚀 Run Free Store Audit",
         "spinner": "Analizando la tienda globalmente...",
-        "success_preview": "¡Diagnóstico preliminar completado!",
+        "success_preview": "¡Simulación de compra y diagnóstico completados!",
         "preview_title": "📊 Overall Store Health: 64/100",
         "full_report_title": "📄 Generar y Descargar Reporte Completo en PDF",
         "full_report_info": "Obtené el informe técnico completo con guías de optimización paso a paso, análisis profundo de UI/UX, SEO y fricción de checkout.",
@@ -134,7 +210,6 @@ i18n_ui = {
         "terms": "Términos y Condiciones",
         "privacy": "Política de Privacidad",
         "error_url": "Por favor, ingresá una URL válida.",
-        "error_api": "⚠️ Error de inicialización del entorno o configuración ausente.",
     },
     "English": {
         "title": "StoreCheck AI",
@@ -143,7 +218,7 @@ i18n_ui = {
         "url_placeholder": "https://your-store.com",
         "btn_preview": "🚀 Run Free Store Audit",
         "spinner": "Analyzing store globally...",
-        "success_preview": "Audit Completed Successfully!",
+        "success_preview": "Mystery Shopping & Audit Completed Successfully!",
         "preview_title": "📊 Overall Store Health: 64/100",
         "full_report_title": "📄 Generate & Download Full PDF Report",
         "full_report_info": "Get the complete technical report with step-by-step optimization guides, deep UI/UX analysis, SEO, and checkout friction review.",
@@ -152,7 +227,6 @@ i18n_ui = {
         "terms": "Terms of Service",
         "privacy": "Privacy Policy",
         "error_url": "Please enter a valid URL.",
-        "error_api": "⚠️ Environment initialization error or missing configuration.",
     },
     "Português": {
         "title": "StoreCheck AI",
@@ -161,16 +235,15 @@ i18n_ui = {
         "url_placeholder": "https://sua-loja.com",
         "btn_preview": "🚀 Run Free Store Audit",
         "spinner": "Analisando a loja globalmente...",
-        "success_preview": "Audit Completed Successfully!",
+        "success_preview": "Mystery Shopping & Audit Completed Successfully!",
         "preview_title": "📊 Overall Store Health: 64/100",
         "full_report_title": "📄 Gerar e Baixar Relatório Completo em PDF",
-        "full_report_info": "Obtenha o relatório técnico completo com guias de otimização passo a passo, análise profunda de UI/UX, SEO e fricção de checkout.",
+        "full_report_info": "Obtenha o relatório técnico completo com guias de otimização passo a passo, análise profunda de UI/UX, SEO e fricción de checkout.",
         "report_lang_label": "Selecione o idioma para o seu relatório PDF completo:",
         "btn_full_report": "💳 Pagar $19 USD e Baixar PDF",
         "terms": "Termos de Serviço",
         "privacy": "Política de Privacidade",
         "error_url": "Por favor, insira um URL válido.",
-        "error_api": "⚠️ Erro de inicialização do ambiente ou configuração ausente.",
     },
     "Italiano": {
         "title": "StoreCheck AI",
@@ -179,7 +252,7 @@ i18n_ui = {
         "url_placeholder": "https://tuo-negozio.com",
         "btn_preview": "🚀 Run Free Store Audit",
         "spinner": "Analisi del negozio in corso...",
-        "success_preview": "Audit Completed Successfully!",
+        "success_preview": "Mystery Shopping & Audit Completed Successfully!",
         "preview_title": "📊 Overall Store Health: 64/100",
         "full_report_title": "📄 Genera e Scarica il Rapporto PDF Completo",
         "full_report_info": "Ottieni il report tecnico completo con guide di ottimizzazione dettagliate, analisi approfondita di UI/UX, SEO e attrito al checkout.",
@@ -188,7 +261,6 @@ i18n_ui = {
         "terms": "Termini di Servizio",
         "privacy": "Informativa sulla Privacy",
         "error_url": "Si prega di inserire un URL valido.",
-        "error_api": "⚠️ Errore di inizializzazione dell'ambiente o configurazione mancante.",
     },
     "Français": {
         "title": "StoreCheck AI",
@@ -197,7 +269,7 @@ i18n_ui = {
         "url_placeholder": "https://votre-boutique.com",
         "btn_preview": "🚀 Run Free Store Audit",
         "spinner": "Analyse de la boutique en cours...",
-        "success_preview": "Audit Completed Successfully!",
+        "success_preview": "Mystery Shopping & Audit Completed Successfully!",
         "preview_title": "📊 Overall Store Health: 64/100",
         "full_report_title": "📄 Générer et Télécharger le Rapport PDF Complet",
         "full_report_info": "Obtenez le rapport technique complet avec des guides d'optimisation étape par étape, une analyse approfondie UI/UX, SEO et tunnel d'achat.",
@@ -206,7 +278,6 @@ i18n_ui = {
         "terms": "Conditions Générales",
         "privacy": "Politique de Confidentialité",
         "error_url": "Veuillez entrer une URL valide.",
-        "error_api": "⚠️ Erreur d'initialisation de l'environnement ou configuration manquante.",
     },
     "中文 (Chinese)": {
         "title": "StoreCheck AI",
@@ -215,7 +286,7 @@ i18n_ui = {
         "url_placeholder": "https://your-store.com",
         "btn_preview": "🚀 Run Free Store Audit",
         "spinner": "正在全局分析商店...",
-        "success_preview": "Audit Completed Successfully!",
+        "success_preview": "Mystery Shopping & Audit Completed Successfully!",
         "preview_title": "📊 Overall Store Health: 64/100",
         "full_report_title": "📄 生成并下载完整PDF报告",
         "full_report_info": "获取包含分步优化指南、深入UI/UX分析、SEO和结账摩擦检查的完整技术报告。",
@@ -224,7 +295,6 @@ i18n_ui = {
         "terms": "服务条款",
         "privacy": "隐私政策",
         "error_url": "请输入有效的网址。",
-        "error_api": "⚠️ 环境初始化错误或缺少配置。",
     },
 }
 
@@ -238,7 +308,6 @@ def call_groq_chat(client_instance, messages, temperature=0.7):
   try:
     models_response = client_instance.models.list()
     all_models = [m.id for m in models_response.data]
-
     excluded_keywords = ["guard", "classifier", "tool", "moderation", "vision"]
     chat_models = [
         m_id
@@ -273,7 +342,7 @@ def call_groq_chat(client_instance, messages, temperature=0.7):
   raise Exception(f"Error de comunicación con el servicio: {last_error}")
 
 
-# Interfaz Principal Estilo Pro
+# Interfaz Principal
 st.markdown(
     f"<h1 style='text-align: center; margin-bottom: 0px;'>⚡ {t['title']}</h1>",
     unsafe_allow_html=True,
@@ -298,33 +367,43 @@ if st.button(t["btn_preview"]):
     status_text = st.empty()
 
     try:
-      status_text.text(
-          "🌐 [1/3] Conectando y escaneando la estructura de la tienda..."
-      )
-      progress_bar.progress(33)
+      status_text.text("🌐 [1/3] Ejecutando simulación de Mystery Shopper y escaneo web...")
+      progress_bar.progress(30)
+
+      success_scraping, scraped_data = scrape_store_data(store_url)
+      if not success_scraping:
+        raise Exception(
+            f"No se pudo acceder a la tienda para realizar la simulación. Detalle: {scraped_data}"
+        )
 
       status_text.text(
-          "🎨 [2/3] Evaluando rendimiento, UI/UX y fricción de checkout..."
+          "🎨 [2/3] Analizando pasarelas de pago, botones de compra y fricción de checkout..."
       )
-      progress_bar.progress(66)
+      progress_bar.progress(65)
 
-      # MODIFICACIÓN: Prompt exclusivo para TEASER (Solo problemas y síntomas, SIN soluciones paso a paso)
-      preview_prompt = (
-          "You are an expert e-commerce auditor and CRO specialist. Analyze the store "
-          f"{store_url}. Provide an executive teaser highlighting 3 critical friction points "
-          "or conversion symptoms (such as mobile usability issues, trust signals, or checkout friction) "
-          "and explain the business impact/risk of losing sales. "
-          "CRITICAL INSTRUCTION: Do NOT provide the step-by-step technical solutions or instructions on how to fix them; "
-          f"keep it strictly as a diagnostic teaser to spark curiosity. Write the response in {ui_language}."
-      )
+      # Prompt de Mystery Shopper basado en estructura real
+      preview_prompt = f"""
+      You are an expert e-commerce CRO specialist and a "Mystery Shopper" attempting to buy items on the store {store_url}.
+      Here is the real data extracted from the site:
+      - Platform: {scraped_data['platform']}
+      - Page Title: {scraped_data['title']}
+      - Meta Description: {scraped_data['meta_description']}
+      - Cart Button Detected: {scraped_data['has_cart_button']}
+      - Checkout Flow Link Detected: {scraped_data['has_checkout_link']}
+      - Payment Gateways Found: {', '.join(scraped_data['payment_gateways'])}
+      - Content Snippet: {scraped_data['raw_text'][:1200]}
+
+      Act as if you just tried to navigate this store as a customer trying to buy. Provide an executive teaser highlighting 3 critical friction points or conversion blockers found during your simulated shopping journey (e.g., trust issues, payment gateway gaps, friction in mobile/cart layout).
+      CRITICAL INSTRUCTION: Do NOT invent features. Do NOT provide step-by-step technical solutions. Keep it strictly as a diagnostic teaser. Write the response in {ui_language}.
+      """
 
       messages = [
-          {"role": "system", "content": "You are an AI e-commerce audit expert."},
+          {"role": "system", "content": "You are an expert e-commerce Mystery Shopper and CRO auditor."},
           {"role": "user", "content": preview_prompt},
       ]
 
       status_text.text(
-          "🤖 [3/3] Generando diagnóstico preliminar con Inteligencia Artificial..."
+          "🤖 [3/3] Generando diagnóstico de conversión basado en la experiencia de compra..."
       )
       progress_bar.progress(90)
 
@@ -339,7 +418,8 @@ if st.button(t["btn_preview"]):
 
       st.session_state["preview_result"] = preview_result
       st.session_state["store_url"] = store_url
-      # Limpiamos el reporte completo anterior si cambian de tienda
+      st.session_state["scraped_data"] = scraped_data
+
       if "full_report_result" in st.session_state:
         del st.session_state["full_report_result"]
 
@@ -366,7 +446,7 @@ if "preview_result" in st.session_state:
     st.metric(label="Mobile Readiness", value="Warning")
 
   st.markdown("---")
-  st.markdown("### 💡 AI Executive Teaser & Findings")
+  st.markdown("### 💡 Mystery Shopper Teaser & Findings")
   st.write(st.session_state["preview_result"])
 
   st.markdown("---")
@@ -389,23 +469,38 @@ if "preview_result" in st.session_state:
 
   if is_paid:
     st.success("🎉 ¡Pago verificado con éxito! Generando tu reporte PDF completo...")
-    
-    # MODIFICACIÓN: Si el usuario pagó, generamos el reporte técnico PROFUNDO con soluciones paso a paso
+
     if "full_report_result" not in st.session_state:
-      with st.spinner("🤖 Elaborando informe técnico profundo y guía de implementación paso a paso..."):
-        full_report_prompt = (
-            "You are an expert e-commerce auditor and CRO specialist. Analyze the store "
-            f"{st.session_state['store_url']}. Provide a comprehensive, deep technical audit report "
-            "including detailed UI/UX analysis, SEO check, checkout friction evaluation, "
-            "and a complete step-by-step technical implementation guide to fix all detected issues. "
-            f"Write the response in {report_language}."
-        )
+      with st.spinner(
+          "🤖 Elaborando informe técnico profundo y guía de solución paso a paso..."
+      ):
+        sd = st.session_state["scraped_data"]
+        full_report_prompt = f"""
+            You are an advanced e-commerce CRO expert and technical consultant. Analyze the real store data from {st.session_state['store_url']}:
+            - Platform: {sd['platform']}
+            - Title: {sd['title']}
+            - Meta Description: {sd['meta_description']}
+            - Cart Button Detected: {sd['has_cart_button']}
+            - Checkout Flow Link Detected: {sd['has_checkout_link']}
+            - Payment Gateways Found: {', '.join(sd['payment_gateways'])}
+            - Content Snippet: {sd['raw_text'][:1800]}
+
+            Provide a comprehensive, deep technical audit report based strictly on these elements. Include a detailed UI/UX analysis of the buyer journey, checkout friction review, payment setup evaluation, and a complete step-by-step technical implementation guide to fix all detected conversion leaks. 
+            Write the response in {report_language}.
+            """
         full_messages = [
-            {"role": "system", "content": "You are an advanced AI e-commerce audit expert and technical consultant."},
+            {
+                "role": "system",
+                "content": (
+                    "You are an advanced AI e-commerce audit expert and technical consultant."
+                ),
+            },
             {"role": "user", "content": full_report_prompt},
         ]
         full_completion = call_groq_chat(client, full_messages, temperature=0.7)
-        st.session_state["full_report_result"] = full_completion.choices[0].message.content
+        st.session_state["full_report_result"] = (
+            full_completion.choices[0].message.content
+        )
 
     pdf_bytes = generate_pdf_report(
         st.session_state["store_url"],

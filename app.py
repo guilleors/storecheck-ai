@@ -14,7 +14,7 @@ def generate_pdf_report(store_url, audit_text, language):
 
   # Encabezado
   p.setFont("Helvetica-Bold", 16)
-  p.drawString(54, height - 50, "StoreCheck AI - Reporte de Auditoría")
+  p.drawString(54, height - 50, "StoreCheck AI - Reporte de Auditoría Completo")
 
   p.setFont("Helvetica", 10)
   p.drawString(54, height - 70, f"Sitio analizado: {store_url}")
@@ -84,7 +84,7 @@ ui_language = st.sidebar.selectbox(
     ["Español", "English", "Português", "Italiano", "Français", "中文 (Chinese)"],
 )
 
-# --- NUEVO: Carga Masiva de Google Sheets oculta en un Expander en la Barra Lateral ---
+# --- Carga Masiva de Google Sheets oculta en un Expander en la Barra Lateral ---
 with st.sidebar.expander("📊 Carga Masiva (Google Sheets)"):
   sheet_link = st.text_input(
       "Link de Google Sheets (Público):",
@@ -120,38 +120,25 @@ with st.sidebar.expander("📊 Carga Masiva (Google Sheets)"):
 i18n_ui = {
     "Español": {
         "title": "StoreCheck AI",
-        "subtitle": (
-            "Automated AI Diagnostics & Growth Recommendations for E-Commerce"
-            " Stores"
-        ),
+        "subtitle": "Automated AI Diagnostics & Growth Recommendations for E-Commerce Stores",
         "url_label": "Enter your Store URL",
         "url_placeholder": "https://mitienda.com",
         "btn_preview": "🚀 Run Free Store Audit",
         "spinner": "Analizando la tienda globalmente...",
-        "success_preview": "Audit Completed Successfully!",
+        "success_preview": "¡Diagnóstico preliminar completado!",
         "preview_title": "📊 Overall Store Health: 64/100",
         "full_report_title": "📄 Generar y Descargar Reporte Completo en PDF",
-        "full_report_info": (
-            "Obtené el informe técnico completo con guías de optimización paso a"
-            " paso, análisis profundo de UI/UX, SEO y fricción de checkout."
-        ),
-        "report_lang_label": (
-            "Seleccioná el idioma para tu Reporte PDF completo:"
-        ),
+        "full_report_info": "Obtené el informe técnico completo con guías de optimización paso a paso, análisis profundo de UI/UX, SEO y fricción de checkout.",
+        "report_lang_label": "Seleccioná el idioma para tu Reporte PDF completo:",
         "btn_full_report": "💳 Pagar $19 USD y Descargar PDF",
         "terms": "Términos y Condiciones",
         "privacy": "Política de Privacidad",
         "error_url": "Por favor, ingresá una URL válida.",
-        "error_api": (
-            "⚠️ Error de inicialización del entorno o configuración ausente."
-        ),
+        "error_api": "⚠️ Error de inicialización del entorno o configuración ausente.",
     },
     "English": {
         "title": "StoreCheck AI",
-        "subtitle": (
-            "Automated AI Diagnostics & Growth Recommendations for E-Commerce"
-            " Stores"
-        ),
+        "subtitle": "Automated AI Diagnostics & Growth Recommendations for E-Commerce Stores",
         "url_label": "Enter your Store URL",
         "url_placeholder": "https://your-store.com",
         "btn_preview": "🚀 Run Free Store Audit",
@@ -159,10 +146,7 @@ i18n_ui = {
         "success_preview": "Audit Completed Successfully!",
         "preview_title": "📊 Overall Store Health: 64/100",
         "full_report_title": "📄 Generate & Download Full PDF Report",
-        "full_report_info": (
-            "Get the complete technical report with step-by-step optimization"
-            " guides, deep UI/UX analysis, SEO, and checkout friction review."
-        ),
+        "full_report_info": "Get the complete technical report with step-by-step optimization guides, deep UI/UX analysis, SEO, and checkout friction review.",
         "report_lang_label": "Select the language for your full PDF report:",
         "btn_full_report": "💳 Pay $19 USD & Download PDF",
         "terms": "Terms of Service",
@@ -172,10 +156,7 @@ i18n_ui = {
     },
     "Português": {
         "title": "StoreCheck AI",
-        "subtitle": (
-            "Automated AI Diagnostics & Growth Recommendations for E-Commerce"
-            " Stores"
-        ),
+        "subtitle": "Automated AI Diagnostics & Growth Recommendations for E-Commerce Stores",
         "url_label": "Enter your Store URL",
         "url_placeholder": "https://sua-loja.com",
         "btn_preview": "🚀 Run Free Store Audit",
@@ -183,27 +164,17 @@ i18n_ui = {
         "success_preview": "Audit Completed Successfully!",
         "preview_title": "📊 Overall Store Health: 64/100",
         "full_report_title": "📄 Gerar e Baixar Relatório Completo em PDF",
-        "full_report_info": (
-            "Obtenha o relatório técnico completo com guias de otimização passo"
-            " a passo, análise profunda de UI/UX, SEO e fricção de checkout."
-        ),
-        "report_lang_label": (
-            "Selecione o idioma para o seu relatório PDF completo:"
-        ),
+        "full_report_info": "Obtenha o relatório técnico completo com guias de otimização passo a passo, análise profunda de UI/UX, SEO e fricção de checkout.",
+        "report_lang_label": "Selecione o idioma para o seu relatório PDF completo:",
         "btn_full_report": "💳 Pagar $19 USD e Baixar PDF",
         "terms": "Termos de Serviço",
         "privacy": "Política de Privacidade",
         "error_url": "Por favor, insira um URL válido.",
-        "error_api": (
-            "⚠️ Erro de inicialização do ambiente ou configuração ausente."
-        ),
+        "error_api": "⚠️ Erro de inicialização do ambiente ou configuração ausente.",
     },
     "Italiano": {
         "title": "StoreCheck AI",
-        "subtitle": (
-            "Automated AI Diagnostics & Growth Recommendations for E-Commerce"
-            " Stores"
-        ),
+        "subtitle": "Automated AI Diagnostics & Growth Recommendations for E-Commerce Stores",
         "url_label": "Enter your Store URL",
         "url_placeholder": "https://tuo-negozio.com",
         "btn_preview": "🚀 Run Free Store Audit",
@@ -211,28 +182,17 @@ i18n_ui = {
         "success_preview": "Audit Completed Successfully!",
         "preview_title": "📊 Overall Store Health: 64/100",
         "full_report_title": "📄 Genera e Scarica il Rapporto PDF Completo",
-        "full_report_info": (
-            "Ottieni il report tecnico completo con guide di ottimizzazione"
-            " dettagliate, analisi approfondita di UI/UX, SEO e attrito al"
-            " checkout."
-        ),
-        "report_lang_label": (
-            "Seleziona la lingua per il tuo rapporto PDF completo:"
-        ),
+        "full_report_info": "Ottieni il report tecnico completo con guide di ottimizzazione dettagliate, analisi approfondita di UI/UX, SEO e attrito al checkout.",
+        "report_lang_label": "Seleziona la lingua per il tuo rapporto PDF completo:",
         "btn_full_report": "💳 Paga $19 USD e Scarica il PDF",
         "terms": "Termini di Servizio",
         "privacy": "Informativa sulla Privacy",
         "error_url": "Si prega di inserire un URL valido.",
-        "error_api": (
-            "⚠️ Errore di inizializzazione dell'ambiente o configurazione mancante."
-        ),
+        "error_api": "⚠️ Errore di inizializzazione dell'ambiente o configurazione mancante.",
     },
     "Français": {
         "title": "StoreCheck AI",
-        "subtitle": (
-            "Automated AI Diagnostics & Growth Recommendations for E-Commerce"
-            " Stores"
-        ),
+        "subtitle": "Automated AI Diagnostics & Growth Recommendations for E-Commerce Stores",
         "url_label": "Enter your Store URL",
         "url_placeholder": "https://votre-boutique.com",
         "btn_preview": "🚀 Run Free Store Audit",
@@ -240,29 +200,17 @@ i18n_ui = {
         "success_preview": "Audit Completed Successfully!",
         "preview_title": "📊 Overall Store Health: 64/100",
         "full_report_title": "📄 Générer et Télécharger le Rapport PDF Complet",
-        "full_report_info": (
-            "Obtenez le rapport technique complet avec des guides"
-            " d'optimisation étape par étape, une analyse approfondie UI/UX,"
-            " SEO et tunnel d'achat."
-        ),
-        "report_lang_label": (
-            "Sélectionnez la langue de votre rapport PDF complet :"
-        ),
+        "full_report_info": "Obtenez le rapport technique complet avec des guides d'optimisation étape par étape, une analyse approfondie UI/UX, SEO et tunnel d'achat.",
+        "report_lang_label": "Sélectionnez la langue de votre rapport PDF complet :",
         "btn_full_report": "💳 Payer 19 $ USD et Télécharger le PDF",
         "terms": "Conditions Générales",
         "privacy": "Politique de Confidentialité",
         "error_url": "Veuillez entrer une URL valide.",
-        "error_api": (
-            "⚠️ Erreur d'initialisation de l'environnement ou configuration"
-            " manquante."
-        ),
+        "error_api": "⚠️ Erreur d'initialisation de l'environnement ou configuration manquante.",
     },
     "中文 (Chinese)": {
         "title": "StoreCheck AI",
-        "subtitle": (
-            "Automated AI Diagnostics & Growth Recommendations for E-Commerce"
-            " Stores"
-        ),
+        "subtitle": "Automated AI Diagnostics & Growth Recommendations for E-Commerce Stores",
         "url_label": "Enter your Store URL",
         "url_placeholder": "https://your-store.com",
         "btn_preview": "🚀 Run Free Store Audit",
@@ -270,9 +218,7 @@ i18n_ui = {
         "success_preview": "Audit Completed Successfully!",
         "preview_title": "📊 Overall Store Health: 64/100",
         "full_report_title": "📄 生成并下载完整PDF报告",
-        "full_report_info": (
-            "获取包含分步优化指南、深入UI/UX分析、SEO和结账摩擦检查的完整技术报告。"
-        ),
+        "full_report_info": "获取包含分步优化指南、深入UI/UX分析、SEO和结账摩擦检查的完整技术报告。",
         "report_lang_label": "选择完整PDF报告的语言：",
         "btn_full_report": "💳 支付 $19 USD 并下载 PDF",
         "terms": "服务条款",
@@ -327,7 +273,7 @@ def call_groq_chat(client_instance, messages, temperature=0.7):
   raise Exception(f"Error de comunicación con el servicio: {last_error}")
 
 
-# Interfaz Principal Estilo Pro (Limpia y enfocada en el usuario final)
+# Interfaz Principal Estilo Pro
 st.markdown(
     f"<h1 style='text-align: center; margin-bottom: 0px;'>⚡ {t['title']}</h1>",
     unsafe_allow_html=True,
@@ -339,7 +285,6 @@ st.markdown(
 )
 st.markdown("---")
 
-# Recupera la URL seleccionada de la planilla en el sidebar (si la usaron) o arranca vacío
 default_url = st.session_state.get("url_desde_sheet", "")
 store_url = st.text_input(
     t["url_label"], value=default_url, placeholder=t["url_placeholder"]
@@ -363,11 +308,14 @@ if st.button(t["btn_preview"]):
       )
       progress_bar.progress(66)
 
+      # MODIFICACIÓN: Prompt exclusivo para TEASER (Solo problemas y síntomas, SIN soluciones paso a paso)
       preview_prompt = (
-          "You are an expert e-commerce auditor and CRO specialist. Analyze"
-          f" the store {store_url}. Provide a structured AI Executive Summary"
-          f" & Action Plan with 3 high-impact findings as bullet points. Write"
-          f" the response in {ui_language}."
+          "You are an expert e-commerce auditor and CRO specialist. Analyze the store "
+          f"{store_url}. Provide an executive teaser highlighting 3 critical friction points "
+          "or conversion symptoms (such as mobile usability issues, trust signals, or checkout friction) "
+          "and explain the business impact/risk of losing sales. "
+          "CRITICAL INSTRUCTION: Do NOT provide the step-by-step technical solutions or instructions on how to fix them; "
+          f"keep it strictly as a diagnostic teaser to spark curiosity. Write the response in {ui_language}."
       )
 
       messages = [
@@ -376,7 +324,7 @@ if st.button(t["btn_preview"]):
       ]
 
       status_text.text(
-          "🤖 [3/3] Generando recomendaciones con Inteligencia Artificial..."
+          "🤖 [3/3] Generando diagnóstico preliminar con Inteligencia Artificial..."
       )
       progress_bar.progress(90)
 
@@ -391,6 +339,10 @@ if st.button(t["btn_preview"]):
 
       st.session_state["preview_result"] = preview_result
       st.session_state["store_url"] = store_url
+      # Limpiamos el reporte completo anterior si cambian de tienda
+      if "full_report_result" in st.session_state:
+        del st.session_state["full_report_result"]
+
     except Exception as e:
       progress_bar.empty()
       status_text.empty()
@@ -414,7 +366,7 @@ if "preview_result" in st.session_state:
     st.metric(label="Mobile Readiness", value="Warning")
 
   st.markdown("---")
-  st.markdown("### 💡 AI Executive Summary & Action Plan")
+  st.markdown("### 💡 AI Executive Teaser & Findings")
   st.write(st.session_state["preview_result"])
 
   st.markdown("---")
@@ -436,10 +388,28 @@ if "preview_result" in st.session_state:
   is_paid = st.query_params.get("success", "false").lower() == "true"
 
   if is_paid:
-    st.success("🎉 ¡Pago verificado con éxito! Tu reporte PDF está listo.")
+    st.success("🎉 ¡Pago verificado con éxito! Generando tu reporte PDF completo...")
+    
+    # MODIFICACIÓN: Si el usuario pagó, generamos el reporte técnico PROFUNDO con soluciones paso a paso
+    if "full_report_result" not in st.session_state:
+      with st.spinner("🤖 Elaborando informe técnico profundo y guía de implementación paso a paso..."):
+        full_report_prompt = (
+            "You are an expert e-commerce auditor and CRO specialist. Analyze the store "
+            f"{st.session_state['store_url']}. Provide a comprehensive, deep technical audit report "
+            "including detailed UI/UX analysis, SEO check, checkout friction evaluation, "
+            "and a complete step-by-step technical implementation guide to fix all detected issues. "
+            f"Write the response in {report_language}."
+        )
+        full_messages = [
+            {"role": "system", "content": "You are an advanced AI e-commerce audit expert and technical consultant."},
+            {"role": "user", "content": full_report_prompt},
+        ]
+        full_completion = call_groq_chat(client, full_messages, temperature=0.7)
+        st.session_state["full_report_result"] = full_completion.choices[0].message.content
+
     pdf_bytes = generate_pdf_report(
         st.session_state["store_url"],
-        st.session_state["preview_result"],
+        st.session_state["full_report_result"],
         report_language,
     )
     st.download_button(

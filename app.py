@@ -228,7 +228,6 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
     story.append(Paragraph("StoreCheck AI — Reporte de Auditoría Profesional", title_style))
     story.append(Paragraph(f"<b>Sitio analizado:</b> {store_url} &nbsp;|&nbsp; <b>Idioma:</b> {language}", meta_style))
     
-    # Tabla resumen de métricas estilo corporativo
     data_table = [
         [Paragraph("<b>Métrica Clave</b>", body_style), Paragraph("<b>Resultado / Valor</b>", body_style)],
         [Paragraph("Salud General (Health Score)", body_style), Paragraph(f"<b>{health} / 100</b>", body_style)],
@@ -296,36 +295,16 @@ ui_language = st.sidebar.selectbox(
 
 enable_comparison = st.sidebar.checkbox("⚔️ Modo Comparación (Tu tienda vs. Competencia)", value=False)
 
-with st.sidebar.expander("📊 Carga Masiva (Google Sheets)"):
-    sheet_link = st.text_input(
-        "Link de Google Sheets (Público):",
-        placeholder="https://docs.google.com/spreadsheets/d/TU_ID/edit",
-        key="input_sheet_link",
-    )
-    if sheet_link:
-        try:
-            csv_url = (
-                sheet_link.split("/edit")[0] + "/export?format=csv"
-                if "/edit" in sheet_link
-                else sheet_link
-            )
-            df_sheets = pd.read_csv(csv_url)
-            st.success(f"¡Planilla leída! {len(df_sheets)} filas.")
+# ==============================================================================
+# [PLACEHOLDER - FUTURO MÓDULO B2B / AGENCIAS]
+# Aquí se integrará en el futuro la carga masiva por Google Sheets / CSV 
+# para clientes corporativos con planes de suscripción ilimitados.
+# ------------------------------------------------------------------------------
+# with st.sidebar.expander("📊 [B2B] Carga Masiva (Google Sheets)"):
+#     sheet_link = st.text_input("Link de Google Sheets:", key="b2b_sheet_link")
+#     # Lógica de procesamiento en lote para agencias...
+# ==============================================================================
 
-            columna_elegida = st.selectbox(
-                "Columna con URLs:", df_sheets.columns, key="col_sheets_sb"
-            )
-            urls_disponibles = df_sheets[columna_elegida].dropna().tolist()
-
-            if urls_disponibles:
-                url_desde_sheet = st.selectbox(
-                    "Seleccionar tienda:", urls_disponibles, key="url_select_sb"
-                )
-                if st.button("Cargar esta tienda en el auditor", key="btn_load_sheet"):
-                    st.session_state["store_url_input"] = url_desde_sheet
-                    st.rerun()
-        except Exception as e:
-            st.error(f"Error al leer planilla: {e}")
 
 # Diccionario i18n 100% integrado
 i18n_ui = {
@@ -680,7 +659,6 @@ if "preview_result" in st.session_state:
     with col3:
         st.metric(label=t["mobile_readiness_label"], value=mobile)
 
-    # Si hay competidor, mostramos también sus métricas en paralelo
     if "comp_scraped_data" in st.session_state:
         st.markdown("---")
         comp_health, comp_seo, comp_speed, comp_mobile = calculate_store_metrics(st.session_state["comp_scraped_data"], ui_language)

@@ -457,26 +457,26 @@ st.markdown(
 )
 st.markdown("---")
 
-# Función de callback para el botón de Reset (limpia antes de renderizar widgets)
-def reset_callback():
+# Uso de st.form para que el navegador reconozca el formulario y active el autocompletado nativo
+with st.form(key="audit_form"):
+    store_url = st.text_input(
+        t["url_label"], 
+        placeholder=t["url_placeholder"],
+        key="store_url_input"
+    )
+
+    col_btn1, col_btn2 = st.columns([4, 1])
+    with col_btn1:
+        run_audit = st.form_submit_button(t["btn_preview"], use_container_width=True)
+    with col_btn2:
+        reset_audit = st.form_submit_button(t["btn_reset"], use_container_width=True)
+
+if reset_audit:
     st.session_state["store_url_input"] = ""
     for key in ["preview_result", "scraped_data", "store_url", "full_report_result"]:
         if key in st.session_state:
             del st.session_state[key]
-
-# Input de URL con su key asignada
-store_url = st.text_input(
-    t["url_label"], 
-    placeholder=t["url_placeholder"],
-    key="store_url_input"
-)
-
-# Botones de acción alineados con el callback de reseteo integrado
-col_btn1, col_btn2 = st.columns([4, 1])
-with col_btn1:
-    run_audit = st.button(t["btn_preview"], use_container_width=True)
-with col_btn2:
-    st.button(t["btn_reset"], on_click=reset_callback, use_container_width=True)
+    st.rerun()
 
 if run_audit:
     if not store_url:

@@ -274,6 +274,7 @@ i18n_ui = {
         "url_label": "Enter your Store URL",
         "url_placeholder": "https://mitienda.com",
         "btn_preview": "🚀 Run Free Store Audit",
+        "btn_reset": "🔄 Reset",
         "spinner": "Analizando la tienda globalmente...",
         "success_preview": "¡Simulación de compra y diagnóstico completados!",
         "preview_title": "📊 Salud General de la Tienda",
@@ -291,6 +292,7 @@ i18n_ui = {
         "url_label": "Enter your Store URL",
         "url_placeholder": "https://your-store.com",
         "btn_preview": "🚀 Run Free Store Audit",
+        "btn_reset": "🔄 Reset",
         "spinner": "Analyzing store globally...",
         "success_preview": "Mystery Shopping & Audit Completed Successfully!",
         "preview_title": "📊 Overall Store Health",
@@ -308,6 +310,7 @@ i18n_ui = {
         "url_label": "Enter your Store URL",
         "url_placeholder": "https://sua-loja.com",
         "btn_preview": "🚀 Run Free Store Audit",
+        "btn_reset": "🔄 Reset",
         "spinner": "Analisando a loja globalmente...",
         "success_preview": "Mystery Shopping & Audit Completed Successfully!",
         "preview_title": "📊 Saúde Geral da Loja",
@@ -325,6 +328,7 @@ i18n_ui = {
         "url_label": "Enter your Store URL",
         "url_placeholder": "https://tuo-negozio.com",
         "btn_preview": "🚀 Run Free Store Audit",
+        "btn_reset": "🔄 Reset",
         "spinner": "Analisi del negozio in corso...",
         "success_preview": "Mystery Shopping & Audit Completed Successfully!",
         "preview_title": "📊 Salute Generale del Negozio",
@@ -342,6 +346,7 @@ i18n_ui = {
         "url_label": "Enter your Store URL",
         "url_placeholder": "https://votre-boutique.com",
         "btn_preview": "🚀 Run Free Store Audit",
+        "btn_reset": "🔄 Reset",
         "spinner": "Analyse de la boutique en cours...",
         "success_preview": "Mystery Shopping & Audit Completed Successfully!",
         "preview_title": "📊 Santé Globale de la Boutique",
@@ -359,6 +364,7 @@ i18n_ui = {
         "url_label": "Enter your Store URL",
         "url_placeholder": "https://your-store.com",
         "btn_preview": "🚀 Run Free Store Audit",
+        "btn_reset": "🔄 Reset",
         "spinner": "正在全局分析商店...",
         "success_preview": "Mystery Shopping & Audit Completed Successfully!",
         "preview_title": "📊 商店总体健康状况",
@@ -433,7 +439,20 @@ store_url = st.text_input(
     t["url_label"], value=default_url, placeholder=t["url_placeholder"]
 )
 
-if st.button(t["btn_preview"]):
+# Botones de acción alineados (Auditar grande a la izquierda, Reset chico a la derecha)
+col_btn1, col_btn2 = st.columns([4, 1])
+with col_btn1:
+    run_audit = st.button(t["btn_preview"], use_container_width=True)
+with col_btn2:
+    reset_audit = st.button(t["btn_reset"], use_container_width=True)
+
+if reset_audit:
+    for key in ["preview_result", "scraped_data", "store_url", "full_report_result", "url_desde_sheet"]:
+        if key in st.session_state:
+            del st.session_state[key]
+    st.rerun()
+
+if run_audit:
     if not store_url:
         st.warning(t["error_url"])
     else:

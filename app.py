@@ -218,7 +218,6 @@ def generate_pdf_report(store_url, audit_text, language):
     # Procesar el texto de la IA y pasarlo limpio a párrafos de ReportLab
     for paragraph in audit_text.split("\n\n"):
         if paragraph.strip():
-            # Reemplazar sintaxis Markdown básica por etiquetas HTML compatibles con ReportLab
             clean_p = paragraph.replace("**", "<b>").replace("__", "<b>")
             story.append(Paragraph(clean_p, body_style))
 
@@ -285,7 +284,6 @@ with st.sidebar.expander("📊 Carga Masiva (Google Sheets)"):
                     "Seleccionar tienda:", urls_disponibles, key="url_select_sb"
                 )
                 if st.button("Cargar esta tienda en el auditor", key="btn_load_sheet"):
-                    st.session_state["url_desde_sheet"] = url_desde_sheet
                     st.session_state["store_url_input"] = url_desde_sheet
                     st.rerun()
         except Exception as e:
@@ -459,13 +457,9 @@ st.markdown(
 )
 st.markdown("---")
 
-# Manejo de la URL mediante session_state para permitir limpieza con Reset
-if "store_url_input" not in st.session_state:
-    st.session_state["store_url_input"] = st.session_state.get("url_desde_sheet", "")
-
+# Input de URL manejado por key sin forzar el argumento 'value=' para preservar el historial del navegador
 store_url = st.text_input(
     t["url_label"], 
-    value=st.session_state["store_url_input"], 
     placeholder=t["url_placeholder"],
     key="store_url_input"
 )
@@ -478,7 +472,7 @@ with col_btn2:
     reset_audit = st.button(t["btn_reset"], use_container_width=True)
 
 if reset_audit:
-    for key in ["preview_result", "scraped_data", "store_url", "full_report_result", "url_desde_sheet", "store_url_input"]:
+    for key in ["preview_result", "scraped_data", "store_url", "full_report_result", "store_url_input"]:
         if key in st.session_state:
             del st.session_state[key]
     st.rerun()

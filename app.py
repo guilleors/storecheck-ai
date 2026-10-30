@@ -5,8 +5,10 @@ from groq import Groq
 import pandas as pd
 import requests
 import streamlit as st
+from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 # Configuración inicial de la página
 st.set_page_config(
@@ -169,36 +171,58 @@ def calculate_store_metrics(scraped_data):
 
 
 def generate_pdf_report(store_url, audit_text, language):
+    """Genera un reporte PDF limpio, formateado y con salto de página automático."""
     buffer = io.BytesIO()
-    p = canvas.Canvas(buffer, pagesize=letter)
-    width, height = letter
+    doc = SimpleDocTemplate(
+        buffer, 
+        pagesize=letter, 
+        rightMargin=54, 
+        leftMargin=54, 
+        topMargin=54, 
+        bottomMargin=54
+    )
+    styles = getSampleStyleSheet()
+    story = []
 
-    # Encabezado
-    p.setFont("Helvetica-Bold", 16)
-    p.drawString(54, height - 50, "StoreCheck AI - Reporte de Auditoría Completo")
+    # Estilos personalizados para el PDF
+    title_style = ParagraphStyle(
+        'ReportTitle',
+        parent=styles['Heading1'],
+        fontSize=15,
+        leading=18,
+        textColor=colors.HexColor('#0F172A'),
+        spaceAfter=6
+    )
+    meta_style = ParagraphStyle(
+        'ReportMeta',
+        parent=styles['Normal'],
+        fontSize=10,
+        leading=14,
+        textColor=colors.HexColor('#64748B'),
+        spaceAfter=12
+    )
+    body_style = ParagraphStyle(
+        'ReportBody',
+        parent=styles['Normal'],
+        fontSize=10,
+        leading=15,
+        textColor=colors.HexColor('#334155'),
+        spaceAfter=10
+    )
 
-    p.setFont("Helvetica", 10)
-    p.drawString(54, height - 70, f"Sitio analizado: {store_url}")
-    p.drawString(54, height - 85, f"Idioma del reporte: {language}")
+    # Encabezado del reporte
+    story.append(Paragraph("StoreCheck AI — Reporte de Auditoría Completo", title_style))
+    story.append(Paragraph(f"<b>Sitio analizado:</b> {store_url} | <b>Idioma:</b> {language}", meta_style))
+    story.append(Spacer(1, 10))
 
-    p.line(54, height - 95, width - 54, height - 95)
+    # Procesar el texto de la IA y pasarlo limpio a párrafos de ReportLab
+    for paragraph in audit_text.split("\n\n"):
+        if paragraph.strip():
+            # Reemplazar sintaxis Markdown básica por etiquetas HTML compatibles con ReportLab
+            clean_p = paragraph.replace("**", "<b>").replace("__", "<b>")
+            story.append(Paragraph(clean_p, body_style))
 
-    # Contenido del reporte
-    textobject = p.beginText(54, height - 120)
-    textobject.setFont("Helvetica", 10)
-
-    for line in audit_text.split("\n"):
-        if len(line) > 90:
-            chunks = [line[i : i + 90] for i in range(0, len(line), 90)]
-            for chunk in chunks:
-                textobject.textLine(chunk)
-        else:
-            textobject.textLine(line)
-
-    p.drawText(textobject)
-    p.showPage()
-    p.save()
-
+    doc.build(story)
     buffer.seek(0)
     return buffer.getvalue()
 
@@ -262,6 +286,7 @@ with st.sidebar.expander("📊 Carga Masiva (Google Sheets)"):
                 )
                 if st.button("Cargar esta tienda en el auditor", key="btn_load_sheet"):
                     st.session_state["url_desde_sheet"] = url_desde_sheet
+                    st.session_state["store_url_input"] = url_desde_sheet
                     st.rerun()
         except Exception as e:
             st.error(f"Error al leer planilla: {e}")
@@ -434,9 +459,15 @@ st.markdown(
 )
 st.markdown("---")
 
-default_url = st.session_state.get("url_desde_sheet", "")
+# Manejo de la URL mediante session_state para permitir limpieza con Reset
+if "store_url_input" not in st.session_state:
+    st.session_state["store_url_input"] = st.session_state.get("url_desde_sheet", "")
+
 store_url = st.text_input(
-    t["url_label"], value=default_url, placeholder=t["url_placeholder"]
+    t["url_label"], 
+    value=st.session_state["store_url_input"], 
+    placeholder=t["url_placeholder"],
+    key="store_url_input"
 )
 
 # Botones de acción alineados (Auditar grande a la izquierda, Reset chico a la derecha)
@@ -447,7 +478,7 @@ with col_btn2:
     reset_audit = st.button(t["btn_reset"], use_container_width=True)
 
 if reset_audit:
-    for key in ["preview_result", "scraped_data", "store_url", "full_report_result", "url_desde_sheet"]:
+    for key in ["preview_result", "scraped_data", "store_url", "full_report_result", "url_desde_sheet", "store_url_input"]:
         if key in st.session_state:
             del st.session_state[key]
     st.rerun()

@@ -457,15 +457,14 @@ st.markdown(
 )
 st.markdown("---")
 
-# Manejo seguro del reseteo antes de instanciar el formulario
-if st.session_state.get("do_reset", False):
+# Callback limpio para el botón de Reset dentro del formulario
+def reset_callback():
     st.session_state["store_url_input"] = ""
     for key in ["preview_result", "scraped_data", "store_url", "full_report_result"]:
         if key in st.session_state:
             del st.session_state[key]
-    st.session_state["do_reset"] = False
 
-# Formulario para preservar el autocompletado nativo del navegador
+# Usamos st.form para que el navegador reconozca el formulario HTML y habilite el autocompletado nativo
 with st.form(key="audit_form"):
     store_url = st.text_input(
         t["url_label"], 
@@ -477,11 +476,7 @@ with st.form(key="audit_form"):
     with col_btn1:
         run_audit = st.form_submit_button(t["btn_preview"], use_container_width=True)
     with col_btn2:
-        reset_audit = st.form_submit_button(t["btn_reset"], use_container_width=True)
-
-if reset_audit:
-    st.session_state["do_reset"] = True
-    st.rerun()
+        reset_audit = st.form_submit_button(t["btn_reset"], on_click=reset_callback, use_container_width=True)
 
 if run_audit:
     if not store_url:

@@ -457,7 +457,7 @@ st.markdown(
 )
 st.markdown("---")
 
-# Input de URL manejado por key sin forzar el argumento 'value=' para preservar el historial del navegador
+# Input de URL con su key asignada
 store_url = st.text_input(
     t["url_label"], 
     placeholder=t["url_placeholder"],
@@ -472,7 +472,9 @@ with col_btn2:
     reset_audit = st.button(t["btn_reset"], use_container_width=True)
 
 if reset_audit:
-    for key in ["preview_result", "scraped_data", "store_url", "full_report_result", "store_url_input"]:
+    # Asignar cadena vacía en lugar de eliminar la clave para que la barra se limpie correctamente
+    st.session_state["store_url_input"] = ""
+    for key in ["preview_result", "scraped_data", "store_url", "full_report_result"]:
         if key in st.session_state:
             del st.session_state[key]
     st.rerun()

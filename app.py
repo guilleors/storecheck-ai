@@ -457,14 +457,14 @@ st.markdown(
 )
 st.markdown("---")
 
-# Callback limpio para el botón de Reset dentro del formulario
+# Callback de reseteo ejecutado antes de renderizar para evitar conflictos de estado
 def reset_callback():
     st.session_state["store_url_input"] = ""
     for key in ["preview_result", "scraped_data", "store_url", "full_report_result"]:
         if key in st.session_state:
             del st.session_state[key]
 
-# Usamos st.form para que el navegador reconozca el formulario HTML y habilite el autocompletado nativo
+# Formulario para habilitar el autocompletado nativo del navegador
 with st.form(key="audit_form"):
     store_url = st.text_input(
         t["url_label"], 
@@ -476,6 +476,7 @@ with st.form(key="audit_form"):
     with col_btn1:
         run_audit = st.form_submit_button(t["btn_preview"], use_container_width=True)
     with col_btn2:
+        # El botón de reset usa el callback on_click para limpiar limpiamente
         reset_audit = st.form_submit_button(t["btn_reset"], on_click=reset_callback, use_container_width=True)
 
 if run_audit:

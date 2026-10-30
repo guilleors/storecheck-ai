@@ -457,7 +457,15 @@ st.markdown(
 )
 st.markdown("---")
 
-# Uso de st.form para que el navegador reconozca el formulario y active el autocompletado nativo
+# Manejo seguro del reseteo antes de instanciar el formulario
+if st.session_state.get("do_reset", False):
+    st.session_state["store_url_input"] = ""
+    for key in ["preview_result", "scraped_data", "store_url", "full_report_result"]:
+        if key in st.session_state:
+            del st.session_state[key]
+    st.session_state["do_reset"] = False
+
+# Formulario para preservar el autocompletado nativo del navegador
 with st.form(key="audit_form"):
     store_url = st.text_input(
         t["url_label"], 
@@ -472,10 +480,7 @@ with st.form(key="audit_form"):
         reset_audit = st.form_submit_button(t["btn_reset"], use_container_width=True)
 
 if reset_audit:
-    st.session_state["store_url_input"] = ""
-    for key in ["preview_result", "scraped_data", "store_url", "full_report_result"]:
-        if key in st.session_state:
-            del st.session_state[key]
+    st.session_state["do_reset"] = True
     st.rerun()
 
 if run_audit:

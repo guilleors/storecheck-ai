@@ -765,7 +765,7 @@ if "preview_result" in st.session_state:
         ],
     )
 
-    is_paid = True
+    is_paid = st.query_params.get("success", "false").lower() == "true"
 
     if is_paid:
         st.success("🎉 ¡Pago verificado con éxito! Ya podés descargar el PDF de tu reporte.")

@@ -253,7 +253,7 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
     story.append(Paragraph("<b>Análisis Técnico y Diagnóstico Detallado</b>", h2_style))
     story.append(Spacer(1, 5))
 
-    # Parser robusto para limpiar Markdown y evitar errores XML en ReportLab
+    # Parser mejorado: limpia Markdown, remueve LaTeX y formatea tablas como texto limpio
     for block in audit_text.split("\n\n"):
         block = block.strip()
         if not block:
@@ -265,30 +265,44 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
             if not line:
                 continue
             
-            # Detectar cabeceras de markdown y pasarlas a negrita limpia
-            if line.startswith("### "):
-                clean_line = f"<b>{html.escape(line[4:].strip())}</b>"
-            elif line.startswith("## "):
-                clean_line = f"<b>{html.escape(line[3:].strip())}</b>"
-            elif line.startswith("# "):
-                clean_line = f"<b>{html.escape(line[2:].strip())}</b>"
+            # Omitir separadores de tablas Markdown
+            if re.match(r'^\|?[\s\-:]+\|[\s\-:|]+$', line):
+                continue
+            
+            # Convertir filas de tablas Markdown en viñetas legibles
+            if line.startswith("|") and line.endswith("|"):
+                cells = [c.strip() for c in line.split("|")[1:-1]]
+                cells = [c for c in cells if c]
+                if cells:
+                    clean_line = "• <b>" + "</b>: ".join([html.escape(c) for c in cells]) + ""
+                else:
+                    continue
             else:
-                # Escapar caracteres especiales de XML para que no rompan ReportLab
-                escaped = html.escape(line)
-                # Reconvertir negritas markdown **text** o __text__ a etiquetas <b> de ReportLab
-                escaped = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', escaped)
-                escaped = re.sub(r'__(.*?)__', r'<b>\1</b>', escaped)
+                # Limpiar fórmulas/símbolos LaTeX de dólares
+                line = line.replace('$', '')
                 
-                # Manejar viñetas limpias
-                if escaped.startswith("- ") or escaped.startswith("* "):
-                    escaped = "• " + escaped[2:]
-                
-                clean_line = escaped
+                # Detectar cabeceras de markdown y pasarlas a negrita
+                if line.startswith("### "):
+                    clean_line = f"<b>{html.escape(line[4:].strip())}</b>"
+                elif line.startswith("## "):
+                    clean_line = f"<b>{html.escape(line[3:].strip())}</b>"
+                elif line.startswith("# "):
+                    clean_line = f"<b>{html.escape(line[2:].strip())}</b>"
+                else:
+                    escaped = html.escape(line)
+                    escaped = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', escaped)
+                    escaped = re.sub(r'__(.*?)__', r'<b>\1</b>', escaped)
+                    
+                    if escaped.startswith("- ") or escaped.startswith("* "):
+                        escaped = "• " + escaped[2:]
+                    
+                    clean_line = escaped
             
             formatted_lines.append(clean_line)
         
-        paragraph_html = "<br/>".join(formatted_lines)
-        story.append(Paragraph(paragraph_html, body_style))
+        if formatted_lines:
+            paragraph_html = "<br/>".join(formatted_lines)
+            story.append(Paragraph(paragraph_html, body_style))
 
     doc.build(story)
     buffer.seek(0)
@@ -723,7 +737,7 @@ if "preview_result" in st.session_state:
     is_paid = True
 
     if is_paid:
-        st.success("🎉 ¡Pago verificado con éxito! Generando tu reporte PDF corporativo...")
+        st.success("🎉 ¡Pago verificado con éxito! Ya podés descargar el PDF de tu reporte.")
 
         if "full_report_result" not in st.session_state:
             with st.spinner("🤖 Elaborando informe técnico profundo y diseño corporativo..."):

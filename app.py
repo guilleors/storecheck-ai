@@ -1,5 +1,7 @@
 import io
 import os
+import html
+import re
 from bs4 import BeautifulSoup
 from groq import Groq
 import pandas as pd
@@ -178,7 +180,7 @@ def calculate_store_metrics(scraped_data, language):
 
 
 def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mobile):
-    """Genera un reporte PDF con diseño corporativo avanzado, tabla de métricas y formato pro."""
+    """Genera un reporte PDF con diseño corporativo avanzado, tabla de métricas y parser limpio de Markdown."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, 
@@ -221,12 +223,12 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
         fontSize=13,
         leading=16,
         textColor=colors.HexColor('#1E293B'),
-        spaceBefore=10,
+        spaceBefore=12,
         spaceAfter=6
     )
 
     story.append(Paragraph("StoreCheck AI — Reporte de Auditoría Profesional", title_style))
-    story.append(Paragraph(f"<b>Sitio analizado:</b> {store_url} &nbsp;|&nbsp; <b>Idioma:</b> {language}", meta_style))
+    story.append(Paragraph(f"<b>Sitio analizado:</b> {html.escape(store_url)} &nbsp;|&nbsp; <b>Idioma:</b> {html.escape(language)}", meta_style))
     
     data_table = [
         [Paragraph("<b>Métrica Clave</b>", body_style), Paragraph("<b>Resultado / Valor</b>", body_style)],
@@ -251,10 +253,42 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
     story.append(Paragraph("<b>Análisis Técnico y Diagnóstico Detallado</b>", h2_style))
     story.append(Spacer(1, 5))
 
-    for paragraph in audit_text.split("\n\n"):
-        if paragraph.strip():
-            clean_p = paragraph.replace("**", "<b>").replace("__", "<b>")
-            story.append(Paragraph(clean_p, body_style))
+    # Parser robusto para limpiar Markdown y evitar errores XML en ReportLab
+    for block in audit_text.split("\n\n"):
+        block = block.strip()
+        if not block:
+            continue
+        
+        formatted_lines = []
+        for line in block.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+            
+            # Detectar cabeceras de markdown y pasarlas a negrita limpia
+            if line.startswith("### "):
+                clean_line = f"<b>{html.escape(line[4:].strip())}</b>"
+            elif line.startswith("## "):
+                clean_line = f"<b>{html.escape(line[3:].strip())}</b>"
+            elif line.startswith("# "):
+                clean_line = f"<b>{html.escape(line[2:].strip())}</b>"
+            else:
+                # Escapar caracteres especiales de XML para que no rompan ReportLab
+                escaped = html.escape(line)
+                # Reconvertir negritas markdown **text** o __text__ a etiquetas <b> de ReportLab
+                escaped = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', escaped)
+                escaped = re.sub(r'__(.*?)__', r'<b>\1</b>', escaped)
+                
+                # Manejar viñetas limpias
+                if escaped.startswith("- ") or escaped.startswith("* "):
+                    escaped = "• " + escaped[2:]
+                
+                clean_line = escaped
+            
+            formatted_lines.append(clean_line)
+        
+        paragraph_html = "<br/>".join(formatted_lines)
+        story.append(Paragraph(paragraph_html, body_style))
 
     doc.build(story)
     buffer.seek(0)
@@ -295,15 +329,9 @@ ui_language = st.sidebar.selectbox(
 
 enable_comparison = st.sidebar.checkbox("⚔️ Modo Comparación (Tu tienda vs. Competencia)", value=False)
 
-# ==============================================================================
 # [PLACEHOLDER - FUTURO MÓDULO B2B / AGENCIAS]
-# Aquí se integrará en el futuro la carga masiva por Google Sheets / CSV 
-# para clientes corporativos con planes de suscripción ilimitados.
-# ------------------------------------------------------------------------------
 # with st.sidebar.expander("📊 [B2B] Carga Masiva (Google Sheets)"):
 #     sheet_link = st.text_input("Link de Google Sheets:", key="b2b_sheet_link")
-#     # Lógica de procesamiento en lote para agencias...
-# ==============================================================================
 
 
 # Diccionario i18n 100% integrado
@@ -691,6 +719,7 @@ if "preview_result" in st.session_state:
         ],
     )
 
+    # Cambiar temporalmente a True para probar la descarga sin pagar
     is_paid = st.query_params.get("success", "false").lower() == "true"
 
     if is_paid:

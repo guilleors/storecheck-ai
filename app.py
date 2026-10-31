@@ -128,7 +128,7 @@ def scrape_store_data(url):
     except requests.exceptions.Timeout:
         return False, "La solicitud expiró (Timeout). El servidor tardó demasiado en responder."
     except requests.exceptions.ConnectionError:
-        return False, "Error de conexión. Verificá que la URL sea correcta o que el sitio web esté online."
+        return False, "Error de conexión. Verificá que la URL seja correcta o que el sitio web esté online."
     except Exception as e:
         return False, str(e)
 
@@ -253,7 +253,6 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
     story.append(Paragraph("<b>Análisis Técnico y Diagnóstico Detallado</b>", h2_style))
     story.append(Spacer(1, 5))
 
-    # Parser mejorado: limpia Markdown, remueve LaTeX y formatea tablas como texto limpio
     for block in audit_text.split("\n\n"):
         block = block.strip()
         if not block:
@@ -265,11 +264,9 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
             if not line:
                 continue
             
-            # Omitir separadores de tablas Markdown
             if re.match(r'^\|?[\s\-:]+\|[\s\-:|]+$', line):
                 continue
             
-            # Convertir filas de tablas Markdown en viñetas legibles
             if line.startswith("|") and line.endswith("|"):
                 cells = [c.strip() for c in line.split("|")[1:-1]]
                 cells = [c for c in cells if c]
@@ -278,10 +275,8 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
                 else:
                     continue
             else:
-                # Limpiar fórmulas/símbolos LaTeX de dólares
                 line = line.replace('$', '')
                 
-                # Detectar cabeceras de markdown y pasarlas a negrita
                 if line.startswith("### "):
                     clean_line = f"<b>{html.escape(line[4:].strip())}</b>"
                 elif line.startswith("## "):
@@ -360,7 +355,7 @@ i18n_ui = {
         "btn_preview": "🚀 Ejecutar Auditoría / Comparativa",
         "btn_reset": "🔄 Restablecer",
         "spinner": "Analizando tiendas globalmente...",
-        "success_preview": "¡Simulación y diagnóstico completados con éxito!",
+        "success_preview": "¡Diagnóstico completado con éxito!",
         "preview_title": "📊 Salud General de la Tienda",
         "seo_score_label": "SEO Score",
         "speed_index_label": "Speed Index",
@@ -734,7 +729,7 @@ if "preview_result" in st.session_state:
     )
 
     # Cambiar temporalmente a True para probar la descarga sin pagar
-    is_paid = True
+    is_paid = st.query_params.get("success", "false").lower() == "true"
 
     if is_paid:
         st.success("🎉 ¡Pago verificado con éxito! Ya podés descargar el PDF de tu reporte.")

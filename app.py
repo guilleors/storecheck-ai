@@ -180,7 +180,7 @@ def calculate_store_metrics(scraped_data, language):
 
 
 def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mobile):
-    """Genera un reporte PDF con diseño corporativo avanzado, tabla de métricas y resaltado visual de puntos."""
+    """Genera un reporte PDF con diseño corporativo avanzado, tabla de métricas y filtro antiduplicados."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, 
@@ -257,19 +257,27 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
     story.append(Paragraph(intro_fixed_text, body_style))
     story.append(Spacer(1, 10))
 
+    # Filtro antiduplicados y eliminador de saludos
     blocks = audit_text.split("\n\n")
     cleaned_blocks = []
+    seen_snippets = set()
+
     for block in blocks:
-        b_lower = block.strip().lower()
+        b_clean = block.strip()
+        b_lower = b_clean.lower()
+        if not b_clean:
+            continue
         if any(b_lower.startswith(prefix) for prefix in ["hola", "aquí tienes", "después de analizar", "estimado", "presento"]):
             continue
-        cleaned_blocks.append(block)
+        
+        # Generar una firma corta del bloque para evitar bucles o repeticiones idénticas
+        snippet_key = b_lower[:70]
+        if snippet_key in seen_snippets:
+            continue
+        seen_snippets.add(snippet_key)
+        cleaned_blocks.append(b_clean)
 
     for block in cleaned_blocks:
-        block = block.strip()
-        if not block:
-            continue
-        
         formatted_lines = []
         for line in block.split("\n"):
             line = line.strip()
@@ -297,9 +305,8 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
             elif line.startswith("# "):
                 clean_line = f"<b>{html.escape(line[2:].strip())}</b>"
             else:
-                # DETECCIÓN Y RESALTADO VISUAL DE PUNTOS NUMERADOS (Ej: "1. ", "2. ")
+                # Resaltado visual para puntos principales numerados
                 if re.match(r'^\d+\.\s+', line):
-                    # Resaltamos el punto principal con color corporativo oscuro, negrita y un pequeño margen superior
                     clean_line = f"<br/><font color='#0F172A'><b>{html.escape(line)}</b></font>"
                 else:
                     escaped = html.escape(line)
@@ -764,6 +771,7 @@ if "preview_result" in st.session_state:
                     csd = st.session_state["comp_scraped_data"]
                     comp_info = f"\n- COMPETITOR STORE: {st.session_state['competitor_url']}\n  Platform: {csd['platform']}\n  Title: {csd['title']}"
 
+                # PROMPT ANTIRREPETICIÓN Y ESTRUCTURA CONCISA DE 5 SECCIONES
                 full_report_prompt = f"""
                     You are a world-class principal e-commerce CRO consultant and an elite executive copywriter. 
                     Analyze the store data from {st.session_state['store_url']}:{comp_info}
@@ -775,23 +783,28 @@ if "preview_result" in st.session_state:
                     - Payment Gateways Found: {', '.join(sd['payment_gateways'])}
                     - Content Snippet: {sd['raw_text'][:1800]}
 
-                    Provide a comprehensive, deep technical audit report based strictly on these elements. 
-                    STRICT EDITORIAL & GRAMMATICAL RULES:
+                    Provide a concise, highly professional, and deep technical audit report based strictly on these elements. 
+                    STRICT EDITORIAL & STRUCTURAL RULES:
                     1. DO NOT include any conversational greetings, intros, or polite filler. Start generating the report directly with section headings.
-                    2. Write the response entirely in flawless, professional, and natural corporate {report_language}. Avoid literal translations or colloquialisms. 
-                    3. Ensure rigorous grammar, punctuation, and syntactic coherence.
-                    4. DO NOT use Markdown tables (pipes like '|'). Format all findings as clean, structured bullet points or paragraphs.
-                    5. Include a detailed UI/UX analysis of the buyer journey, checkout friction review, competitive edge evaluation, and a complete step-by-step technical implementation guide. 
-                    6. Ensure section 1 is strictly titled '1. Auditoría técnica:'.
+                    2. STRICTLY AVOID ANY REPETITION. Do not repeat sections, do not list titles in multiple foreign languages (no French, Italian, Japanese translations), and do not use boilerplate placeholder sentences. Every section and bullet point must contain unique, specific insights.
+                    3. Write the response entirely in flawless, professional, and natural corporate {report_language}. Avoid literal translations or colloquialisms. 
+                    4. Ensure rigorous grammar, punctuation, and syntactic coherence.
+                    5. DO NOT use Markdown tables (pipes like '|'). Format all findings as clean, structured bullet points or paragraphs.
+                    6. Structure the report into exactly 5 concise sections: 
+                       1. Auditoría técnica:
+                       2. Análisis UI/UX y buyer journey:
+                       3. Revisión de fricción en el proceso de compra:
+                       4. Evaluación de ventaja competitiva:
+                       5. Guía de implementación paso a paso:
                     """
                 full_messages = [
                     {
                         "role": "system",
-                        "content": "Template editor for elite e-commerce reports.",
+                        "content": "You are an elite corporate technical consultant and native copyeditor specializing in e-commerce optimization.",
                     },
                     {"role": "user", "content": full_report_prompt},
                 ]
-                full_completion = call_groq_chat(client, full_messages, temperature=0.4)
+                full_completion = call_groq_chat(client, full_messages, temperature=0.3)
                 st.session_state["full_report_result"] = full_completion.choices[0].message.content
 
         pdf_bytes = generate_pdf_report(

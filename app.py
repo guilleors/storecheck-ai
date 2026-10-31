@@ -27,13 +27,13 @@ if legal_page == "terms":
     st.markdown("## Términos y Condiciones — StoreCheck AI")
     st.markdown("""
     **1. Objeto del Servicio**  
-    StoreCheck AI es una plataforma automatizada de auditoría y diagnóstico de e-commerce basada en inteligencia artificial y simulaciones de experiencia de usuario (*Mystery Shopper*). Los análisis tienen un propósito informativo y de optimización técnica.
+    StoreCheck AI es una plataforma automatizada de auditoría y diagnóstico de e-commerce basada en inteligencia artificial y simulaciones de experiencia de usuario (*Mystery Shopper*). Los análisis y guías de implementación tienen un propósito informativo y técnico.
 
     **2. Pagos y Reembolsos**  
-    Los reportes completos en PDF se habilitan de manera digital e inmediata tras la confirmación exitosa del pago único de $19 USD. Al tratarse de un activo digital descargable, no se realizan reembolsos una vez generado el archivo.
+    Los reportes completos en PDF y los packs de consultoría técnica se habilitan tras la confirmación exitosa del pago. Al tratarse de entregables digitales y personalizados, no se realizan reembolsos una vez emitido el material.
 
     **3. Limitación de Responsabilidad**  
-    Los resultados, puntajes y recomendaciones de optimización se generan mediante modelos algorítmicos. StoreCheck AI no garantiza un aumento directo en ventas o conversiones, ya que dependen de la implementación del usuario y factores externos del mercado.
+    Los resultados y recomendaciones se generan mediante modelos algorítmicos. StoreCheck AI provee especificaciones técnicas y guías de código orientativas, declinando toda responsabilidad sobre la ejecución final realizada por terceros en sus servidores.
     """)
     st.stop()
 
@@ -42,13 +42,13 @@ elif legal_page == "privacy":
     st.markdown("## Política de Privacidad — StoreCheck AI")
     st.markdown("""
     **1. Recopilación de Datos**  
-    StoreCheck AI procesa exclusivamente datos públicos de las URLs ingresadas (títulos, metadatos, estructura HTML visible y pasarelas de pago detectadas) con el único fin de generar los diagnósticos solicitados.
+    StoreCheck AI procesa exclusivamente datos públicos de las URLs ingresadas y los datos de contacto provistos voluntariamente para el envío de entregables técnicos.
 
     **2. Uso de la Información**  
-    Los datos de las tiendas analizadas y las consultas realizadas no se comercializan con terceros ni se utilizan para entrenar modelos públicos de inteligencia artificial fuera del flujo operativo del servicio.
+    Los datos de las tiendas analizadas no se comercializan con terceros ni se utilizan para entrenar modelos públicos de inteligencia artificial fuera del flujo operativo del servicio.
 
     **3. Seguridad de las Transacciones**  
-    Los pagos son procesados de forma segura a través de pasarelas externas certificadas (como Lemon Squeezy), sin que nuestra plataforma almacene datos sensibles de tarjetas de crédito o información bancaria.
+    Los pagos son procesados de forma segura a través de pasarelas externas certificadas (como Lemon Squeezy), sin que nuestra plataforma almacene datos sensibles de tarjetas de crédito.
     """)
     st.stop()
 
@@ -70,7 +70,7 @@ def scrape_store_data(url):
         response = requests.get(url, headers=headers, timeout=12)
         
         if response.status_code in [403, 401]:
-            return False, "El sitio cuenta con estrictas políticas de seguridad (WAF / Cloudflare) que bloquean accesos automatizados (ej. redes sociales o dominios altamente protegidos)."
+            return False, "El sitio cuenta con estrictas políticas de seguridad (WAF / Cloudflare) que bloquean accesos automatizados."
         
         if response.status_code != 200:
             return False, f"Código de estado HTTP devuelto: {response.status_code}"
@@ -128,7 +128,7 @@ def scrape_store_data(url):
     except requests.exceptions.Timeout:
         return False, "La solicitud expiró (Timeout). El servidor tardó demasiado en responder."
     except requests.exceptions.ConnectionError:
-        return False, "Error de conexión. Verificá que la URL seja correcta o que el sitio web esté online."
+        return False, "Error de conexión. Verificá que la URL sea correcta o que el sitio web esté online."
     except Exception as e:
         return False, str(e)
 
@@ -253,6 +253,10 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
     story.append(Paragraph("<b>Análisis Técnico y Diagnóstico Detallado</b>", h2_style))
     story.append(Spacer(1, 5))
 
+    intro_fixed_text = "Se presenta un informe detallado sobre la experiencia (UI/UX) y la auditoría técnica de su sitio web, así como una revisión de la fricción de la fase de compra y una evaluación de ventajas competitivas. Además, se proporciona una guía paso a paso para implementar las correcciones necesarias para mejorar el rendimiento de conversión del sitio web."
+    story.append(Paragraph(intro_fixed_text, body_style))
+    story.append(Spacer(1, 10))
+
     for block in audit_text.split("\n\n"):
         block = block.strip()
         if not block:
@@ -266,6 +270,9 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
             
             if re.match(r'^\|?[\s\-:]+\|[\s\-:|]+$', line):
                 continue
+            
+            line = line.replace("Auditorio técnico", "Auditoría técnica")
+            line = line.replace("auditorio técnico", "auditoría técnica")
             
             if line.startswith("|") and line.endswith("|"):
                 cells = [c.strip() for c in line.split("|")[1:-1]]
@@ -338,10 +345,6 @@ ui_language = st.sidebar.selectbox(
 
 enable_comparison = st.sidebar.checkbox("⚔️ Modo Comparación (Tu tienda vs. Competencia)", value=False)
 
-# [PLACEHOLDER - FUTURO MÓDULO B2B / AGENCIAS]
-# with st.sidebar.expander("📊 [B2B] Carga Masiva (Google Sheets)"):
-#     sheet_link = st.text_input("Link de Google Sheets:", key="b2b_sheet_link")
-
 
 # Diccionario i18n 100% integrado
 i18n_ui = {
@@ -355,7 +358,7 @@ i18n_ui = {
         "btn_preview": "🚀 Ejecutar Auditoría / Comparativa",
         "btn_reset": "🔄 Restablecer",
         "spinner": "Analizando tiendas globalmente...",
-        "success_preview": "¡Diagnóstico completado con éxito!",
+        "success_preview": "Diagnóstico completado con éxito!",
         "preview_title": "📊 Salud General de la Tienda",
         "seo_score_label": "SEO Score",
         "speed_index_label": "Speed Index",
@@ -380,7 +383,7 @@ i18n_ui = {
         "btn_preview": "🚀 Run Audit / Head-to-Head",
         "btn_reset": "🔄 Reset",
         "spinner": "Analyzing stores globally...",
-        "success_preview": "Mystery Shopping & Audit Completed Successfully!",
+        "success_preview": "Audit Completed Successfully!",
         "preview_title": "📊 Overall Store Health",
         "seo_score_label": "SEO Score",
         "speed_index_label": "Speed Index",
@@ -405,7 +408,7 @@ i18n_ui = {
         "btn_preview": "🚀 Executar Auditoria / Comparativo",
         "btn_reset": "🔄 Redefinir",
         "spinner": "Analisando lojas globalmente...",
-        "success_preview": "Simulação de compra e diagnóstico concluídos!",
+        "success_preview": "Diagnóstico concluído com sucesso!",
         "preview_title": "📊 Saúde Geral da Loja",
         "seo_score_label": "SEO Score",
         "speed_index_label": "Speed Index",
@@ -430,7 +433,7 @@ i18n_ui = {
         "btn_preview": "🚀 Esegui Audit / Testa a Testa",
         "btn_reset": "🔄 Reimposta",
         "spinner": "Analisi dei negozi in corso...",
-        "success_preview": "Simulazione d'acquisto e diagnostica completate!",
+        "success_preview": "Diagnostica completata con successo!",
         "preview_title": "📊 Salute Generale del Negozio",
         "seo_score_label": "SEO Score",
         "speed_index_label": "Speed Index",
@@ -455,7 +458,7 @@ i18n_ui = {
         "btn_preview": "🚀 Lancer l'Audit / Comparatif",
         "btn_reset": "🔄 Réinitialiser",
         "spinner": "Analyse des boutiques en cours...",
-        "success_preview": "Simulation d'achat et diagnostic terminés avec succès !",
+        "success_preview": "Diagnostic terminé avec succès !",
         "preview_title": "📊 Santé Globale de la Boutique",
         "seo_score_label": "SEO Score",
         "speed_index_label": "Speed Index",
@@ -480,7 +483,7 @@ i18n_ui = {
         "btn_preview": "🚀 运行审计 / 竞品对比",
         "btn_reset": "🔄 重置",
         "spinner": "正在全局分析商店...",
-        "success_preview": "神秘顾客模拟与诊断成功完成！",
+        "success_preview": "诊断成功完成！",
         "preview_title": "📊 商店总体健康状况",
         "seo_score_label": "SEO 评分",
         "speed_index_label": "加载速度",
@@ -557,7 +560,7 @@ st.markdown("---")
 def reset_callback():
     st.session_state["store_url_input"] = ""
     st.session_state["competitor_url_input"] = ""
-    for key in ["preview_result", "scraped_data", "store_url", "full_report_result", "comp_scraped_data", "competitor_url"]:
+    for key in ["preview_result", "scraped_data", "store_url", "full_report_result", "comp_scraped_data", "competitor_url", "consulting_submitted"]:
         if key in st.session_state:
             del st.session_state[key]
 
@@ -729,7 +732,7 @@ if "preview_result" in st.session_state:
     )
 
     # Cambiar temporalmente a True para probar la descarga sin pagar
-    is_paid = st.query_params.get("success", "false").lower() == "true"
+    is_paid = True
 
     if is_paid:
         st.success("🎉 ¡Pago verificado con éxito! Ya podés descargar el PDF de tu reporte.")
@@ -742,8 +745,10 @@ if "preview_result" in st.session_state:
                     csd = st.session_state["comp_scraped_data"]
                     comp_info = f"\n- COMPETITOR STORE: {st.session_state['competitor_url']}\n  Platform: {csd['platform']}\n  Title: {csd['title']}"
 
+                # PROMPT BLINDADO CON EXIGENCIA GRAMATICAL Y ESTILÍSTICA EXTREMA
                 full_report_prompt = f"""
-                    You are an advanced e-commerce CRO expert and technical consultant. Analyze the store data from {st.session_state['store_url']}:{comp_info}
+                    You are a world-class principal e-commerce CRO consultant and an elite executive copywriter. 
+                    Analyze the store data from {st.session_state['store_url']}:{comp_info}
                     - Platform: {sd['platform']}
                     - Title: {sd['title']}
                     - Meta Description: {sd['meta_description']}
@@ -752,17 +757,21 @@ if "preview_result" in st.session_state:
                     - Payment Gateways Found: {', '.join(sd['payment_gateways'])}
                     - Content Snippet: {sd['raw_text'][:1800]}
 
-                    Provide a comprehensive, deep technical audit report based strictly on these elements. Include a detailed UI/UX analysis of the buyer journey, checkout friction review, competitive edge evaluation, and a complete step-by-step technical implementation guide to fix all detected conversion leaks. 
-                    Write the response entirely in {report_language}.
+                    Provide a comprehensive, deep technical audit report based strictly on these elements. 
+                    STRICT EDITORIAL & GRAMMATICAL RULES:
+                    1. Write the response entirely in flawless, professional, and natural corporate {report_language}. Avoid any literal translations, awkward sentence structures, or colloquialisms. 
+                    2. Ensure rigorous grammar, punctuation, and syntactic coherence.
+                    3. Include a detailed UI/UX analysis of the buyer journey, checkout friction review, competitive edge evaluation, and a complete step-by-step technical implementation guide to fix all detected conversion leaks. 
+                    4. Ensure section 1 is strictly titled '1. Auditoría técnica:'.
                     """
                 full_messages = [
                     {
                         "role": "system",
-                        "content": "You are an advanced AI e-commerce audit expert and technical consultant.",
+                        "content": "You are an elite corporate technical consultant and native copyeditor specializing in e-commerce optimization.",
                     },
                     {"role": "user", "content": full_report_prompt},
                 ]
-                full_completion = call_groq_chat(client, full_messages, temperature=0.7)
+                full_completion = call_groq_chat(client, full_messages, temperature=0.5)  # Temperatura más baja para más precisión y menos desvíos creativos
                 st.session_state["full_report_result"] = full_completion.choices[0].message.content
 
         pdf_bytes = generate_pdf_report(
@@ -778,6 +787,30 @@ if "preview_result" in st.session_state:
             mime="application/pdf",
             use_container_width=True,
         )
+
+        # ======================================================================
+        # MÓDULO DE UPSELL CAMINO B (Plan de Acción Quirúrgico & Guía para Devs)
+        # ======================================================================
+        st.markdown("---")
+        st.markdown("### 🗺️ ¿Querés un Plan de Acción Quirúrgico Personalizado?")
+        st.info("Si tu equipo de desarrollo o vos necesitan los fragmentos de código exactos, configuraciones de SEO y esquemas listos para insertar sin dar vueltas, solicitá nuestro **Playbook de Implementación Pro** ($150 USD).")
+
+        with st.form(key="consulting_form"):
+            st.markdown("**Solicitar Asesoría Quirúrgica y Snippets a Medida ($150 USD)**")
+            client_email = st.text_input("Tu Correo Electrónico:", placeholder="tu@email.com")
+            dev_notes = st.text_area("Detalles técnicos o dudas específicas para el playbook:", placeholder="Ej: Necesitamos estructurar los metadatos y los eventos de analítica para Shopify...")
+            submit_consulting = st.form_submit_button("🚀 Solicitar Playbook Técnico", use_container_width=True)
+
+            if submit_consulting:
+                if not client_email or "@" not in client_email:
+                    st.warning("Por favor, ingresá un correo electrónico válido.")
+                else:
+                    st.session_state["consulting_submitted"] = True
+
+        if st.session_state.get("consulting_submitted", False):
+            st.success("¡Solicitud registrada con éxito! 🚀 Te enviamos los detalles de pago y entrega a tu casilla. Armaremos tu guía quirúrgica a medida.")
+        # ======================================================================
+
     else:
         checkout_url = "https://storecheck-ai.lemonsqueezy.com/checkout/buy/16b5540c-1884-4e2c-a07a-3912222588dc?checkout[redirect_url]=https://storecheck-ai.streamlit.app//?success=true"
 

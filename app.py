@@ -180,7 +180,7 @@ def calculate_store_metrics(scraped_data, language):
 
 
 def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mobile):
-    """Genera un reporte PDF con diseño corporativo avanzado, tabla de métricas y parser limpio sin errores de formato."""
+    """Genera un reporte PDF con diseño corporativo avanzado, tabla de métricas y resaltado visual de puntos."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, 
@@ -215,7 +215,7 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
         fontSize=10,
         leading=15,
         textColor=colors.HexColor('#334155'),
-        spaceAfter=10
+        spaceAfter=8
     )
     h2_style = ParagraphStyle(
         'ReportH2',
@@ -227,7 +227,6 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
         spaceAfter=6
     )
 
-    # Título corregido estrictamente a 'StoreCheck AI'
     story.append(Paragraph("StoreCheck AI — Reporte de Auditoría Profesional", title_style))
     story.append(Paragraph(f"<b>Sitio analizado:</b> {html.escape(store_url)} &nbsp;|&nbsp; <b>Idioma:</b> {html.escape(language)}", meta_style))
     
@@ -258,7 +257,6 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
     story.append(Paragraph(intro_fixed_text, body_style))
     story.append(Spacer(1, 10))
 
-    # Limpieza estricta de saludos conversacionales de la IA
     blocks = audit_text.split("\n\n")
     cleaned_blocks = []
     for block in blocks:
@@ -281,17 +279,14 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
             if re.match(r'^\|?[\s\-:]+\|[\s\-:|]+$', line):
                 continue
             
-            # Correcciones ortográficas y de vocabulario automático
             line = line.replace("Auditorio técnico", "Auditoría técnica")
             line = line.replace("auditorio técnico", "auditoría técnica")
             line = line.replace("experiencia utilizador", "experiencia de usuario")
             line = line.replace("e varejas", "minorista / e-commerce")
             
-            # Limpieza total de tablas mal estructuradas o símbolos LaTeX conflictivos
             if line.startswith("|") and line.endswith("|"):
                 continue
             
-            # Limpiar fórmulas de LaTeX con símbolos de pesos o flechas feas
             line = re.sub(r'\$.*?\$', '', line)
             line = line.replace('$', '')
 
@@ -302,23 +297,28 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
             elif line.startswith("# "):
                 clean_line = f"<b>{html.escape(line[2:].strip())}</b>"
             else:
-                escaped = html.escape(line)
-                parts = escaped.split("**")
-                if len(parts) >= 3:
-                    new_parts = []
-                    for i, part in enumerate(parts):
-                        if i % 2 == 1:
-                            new_parts.append(f"<b>{part}</b>")
-                        else:
-                            new_parts.append(part)
-                    escaped = "".join(new_parts)
+                # DETECCIÓN Y RESALTADO VISUAL DE PUNTOS NUMERADOS (Ej: "1. ", "2. ")
+                if re.match(r'^\d+\.\s+', line):
+                    # Resaltamos el punto principal con color corporativo oscuro, negrita y un pequeño margen superior
+                    clean_line = f"<br/><font color='#0F172A'><b>{html.escape(line)}</b></font>"
                 else:
-                    escaped = escaped.replace("**", "")
-                
-                if escaped.startswith("- ") or escaped.startswith("* "):
-                    escaped = "• " + escaped[2:]
-                
-                clean_line = escaped
+                    escaped = html.escape(line)
+                    parts = escaped.split("**")
+                    if len(parts) >= 3:
+                        new_parts = []
+                        for i, part in enumerate(parts):
+                            if i % 2 == 1:
+                                new_parts.append(f"<b>{part}</b>")
+                            else:
+                                new_parts.append(part)
+                        escaped = "".join(new_parts)
+                    else:
+                        escaped = escaped.replace("**", "")
+                    
+                    if escaped.startswith("- ") or escaped.startswith("* "):
+                        escaped = "• " + escaped[2:]
+                    
+                    clean_line = escaped
             
             formatted_lines.append(clean_line)
         
@@ -751,7 +751,6 @@ if "preview_result" in st.session_state:
         ],
     )
 
-    # Cambiar temporalmente a True para probar la descarga sin pagar
     is_paid = True
 
     if is_paid:
@@ -778,17 +777,17 @@ if "preview_result" in st.session_state:
 
                     Provide a comprehensive, deep technical audit report based strictly on these elements. 
                     STRICT EDITORIAL & GRAMMATICAL RULES:
-                    1. DO NOT include any conversational greetings, intros, or polite filler (e.g., do NOT start with "Hola", "Aquí tienes", "Estimado", "Presento"). Start generating the report directly with section headings (e.g., '1. Auditoría técnica:').
-                    2. Write the response entirely in flawless, professional, and natural corporate {report_language}. Avoid any literal translations, foreign leaks (like Portuguese words like 'varejas'), or colloquialisms. 
+                    1. DO NOT include any conversational greetings, intros, or polite filler. Start generating the report directly with section headings.
+                    2. Write the response entirely in flawless, professional, and natural corporate {report_language}. Avoid literal translations or colloquialisms. 
                     3. Ensure rigorous grammar, punctuation, and syntactic coherence.
                     4. DO NOT use Markdown tables (pipes like '|'). Format all findings as clean, structured bullet points or paragraphs.
-                    5. Include a detailed UI/UX analysis of the buyer journey, checkout friction review, competitive edge evaluation, and a complete step-by-step technical implementation guide to fix all detected conversion leaks. 
+                    5. Include a detailed UI/UX analysis of the buyer journey, checkout friction review, competitive edge evaluation, and a complete step-by-step technical implementation guide. 
                     6. Ensure section 1 is strictly titled '1. Auditoría técnica:'.
                     """
                 full_messages = [
                     {
                         "role": "system",
-                        "content": "You are an elite corporate technical consultant and native copyeditor specializing in e-commerce optimization.",
+                        "content": "Template editor for elite e-commerce reports.",
                     },
                     {"role": "user", "content": full_report_prompt},
                 ]
@@ -809,9 +808,6 @@ if "preview_result" in st.session_state:
             use_container_width=True,
         )
 
-        # ======================================================================
-        # MÓDULO DE UPSELL CAMINO B (Plan de Acción Quirúrgico & Guía para Devs)
-        # ======================================================================
         st.markdown("---")
         st.markdown("### 🗺️ ¿Querés un Plan de Acción Quirúrgico Personalizado?")
         st.info("Si tu equipo de desarrollo o vos necesitan los fragmentos de código exactos, configuraciones de SEO y esquemas listos para insertar sin dar vueltas, solicitá nuestro **Playbook de Implementación Pro** ($150 USD).")
@@ -830,7 +826,6 @@ if "preview_result" in st.session_state:
 
         if st.session_state.get("consulting_submitted", False):
             st.success("¡Solicitud registrada con éxito! 🚀 Te enviamos los detalles de pago y entrega a tu casilla. Armaremos tu guía quirúrgica a medida.")
-        # ======================================================================
 
     else:
         checkout_url = "https://storecheck-ai.lemonsqueezy.com/checkout/buy/16b5540c-1884-4e2c-a07a-3912222588dc?checkout[redirect_url]=https://storecheck-ai.streamlit.app//?success=true"

@@ -180,7 +180,7 @@ def calculate_store_metrics(scraped_data, language):
 
 
 def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mobile):
-    """Genera un reporte PDF con diseño corporativo avanzado, tabla de métricas y filtro antiduplicados."""
+    """Genera un reporte PDF con diseño corporativo avanzado, tabla de métricas y forzado de numeración en Python."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, 
@@ -220,11 +220,11 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
     h2_style = ParagraphStyle(
         'ReportH2',
         parent=styles['Heading2'],
-        fontSize=13,
+        fontSize=12,
         leading=16,
-        textColor=colors.HexColor('#1E293B'),
-        spaceBefore=12,
-        spaceAfter=6
+        textColor=colors.HexColor('#0F172A'),
+        spaceBefore=14,
+        spaceAfter=4
     )
 
     story.append(Paragraph("StoreCheck AI — Reporte de Auditoría Profesional", title_style))
@@ -257,7 +257,7 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
     story.append(Paragraph(intro_fixed_text, body_style))
     story.append(Spacer(1, 10))
 
-    # Filtro antiduplicados y eliminador de saludos
+    # Limpieza de saludos y bloques repetidos
     blocks = audit_text.split("\n\n")
     cleaned_blocks = []
     seen_snippets = set()
@@ -270,7 +270,6 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
         if any(b_lower.startswith(prefix) for prefix in ["hola", "aquí tienes", "después de analizar", "estimado", "presento"]):
             continue
         
-        # Generar una firma corta del bloque para evitar bucles o repeticiones idénticas
         snippet_key = b_lower[:70]
         if snippet_key in seen_snippets:
             continue
@@ -287,10 +286,12 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
             if re.match(r'^\|?[\s\-:]+\|[\s\-:|]+$', line):
                 continue
             
+            # Limpieza ortográfica y de etiquetas HTML sueltas que escupa la IA
             line = line.replace("Auditorio técnico", "Auditoría técnica")
             line = line.replace("auditorio técnico", "auditoría técnica")
             line = line.replace("experiencia utilizador", "experiencia de usuario")
             line = line.replace("e varejas", "minorista / e-commerce")
+            line = line.replace("<title>", "título: ").replace("</title>", "")
             
             if line.startswith("|") and line.endswith("|"):
                 continue
@@ -298,34 +299,40 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
             line = re.sub(r'\$.*?\$', '', line)
             line = line.replace('$', '')
 
-            if line.startswith("### "):
-                clean_line = f"<b>{html.escape(line[4:].strip())}</b>"
-            elif line.startswith("## "):
-                clean_line = f"<b>{html.escape(line[3:].strip())}</b>"
-            elif line.startswith("# "):
-                clean_line = f"<b>{html.escape(line[2:].strip())}</b>"
+            # FORZADO DE NUMERACIÓN Y TÍTULOS EN PYTHON PARA EVITAR QUE LA IA LOS PIERDA
+            line_lower = line.lower()
+            forced_heading = None
+            if "auditoría técnica" in line_lower and len(line) < 40:
+                forced_heading = "1. Auditoría técnica"
+            elif "ui/ux" in line_lower and len(line) < 45:
+                forced_heading = "2. Análisis UI/UX y buyer journey"
+            elif "fricción" in line_lower and len(line) < 45:
+                forced_heading = "3. Revisión de fricción en el proceso de compra"
+            elif "ventaja competitiva" in line_lower and len(line) < 45:
+                forced_heading = "4. Evaluación de ventaja competitiva"
+            elif "implementación" in line_lower and len(line) < 45:
+                forced_heading = "5. Guía de implementación paso a paso"
+
+            if forced_heading:
+                clean_line = f"<br/><b>{forced_heading}</b>"
             else:
-                # Resaltado visual para puntos principales numerados
-                if re.match(r'^\d+\.\s+', line):
-                    clean_line = f"<br/><font color='#0F172A'><b>{html.escape(line)}</b></font>"
+                escaped = html.escape(line)
+                parts = escaped.split("**")
+                if len(parts) >= 3:
+                    new_parts = []
+                    for i, part in enumerate(parts):
+                        if i % 2 == 1:
+                            new_parts.append(f"<b>{part}</b>")
+                        else:
+                            new_parts.append(part)
+                    escaped = "".join(new_parts)
                 else:
-                    escaped = html.escape(line)
-                    parts = escaped.split("**")
-                    if len(parts) >= 3:
-                        new_parts = []
-                        for i, part in enumerate(parts):
-                            if i % 2 == 1:
-                                new_parts.append(f"<b>{part}</b>")
-                            else:
-                                new_parts.append(part)
-                        escaped = "".join(new_parts)
-                    else:
-                        escaped = escaped.replace("**", "")
-                    
-                    if escaped.startswith("- ") or escaped.startswith("* "):
-                        escaped = "• " + escaped[2:]
-                    
-                    clean_line = escaped
+                    escaped = escaped.replace("**", "")
+                
+                if escaped.startswith("- ") or escaped.startswith("* "):
+                    escaped = "• " + escaped[2:]
+                
+                clean_line = escaped
             
             formatted_lines.append(clean_line)
         
@@ -560,7 +567,7 @@ def call_groq_chat(client_instance, messages, temperature=0.7):
     last_error = None
     for model_id in chat_models:
         try:
-            response = client_instance.chat.completions.create(
+            response = client_instance_chat_completions = client_instance.chat.completions.create(
                 messages=messages, model=model_id, temperature=temperature
             )
             return response
@@ -771,7 +778,6 @@ if "preview_result" in st.session_state:
                     csd = st.session_state["comp_scraped_data"]
                     comp_info = f"\n- COMPETITOR STORE: {st.session_state['competitor_url']}\n  Platform: {csd['platform']}\n  Title: {csd['title']}"
 
-                # PROMPT ANTIRREPETICIÓN Y ESTRUCTURA CONCISA DE 5 SECCIONES
                 full_report_prompt = f"""
                     You are a world-class principal e-commerce CRO consultant and an elite executive copywriter. 
                     Analyze the store data from {st.session_state['store_url']}:{comp_info}
@@ -786,16 +792,16 @@ if "preview_result" in st.session_state:
                     Provide a concise, highly professional, and deep technical audit report based strictly on these elements. 
                     STRICT EDITORIAL & STRUCTURAL RULES:
                     1. DO NOT include any conversational greetings, intros, or polite filler. Start generating the report directly with section headings.
-                    2. STRICTLY AVOID ANY REPETITION. Do not repeat sections, do not list titles in multiple foreign languages (no French, Italian, Japanese translations), and do not use boilerplate placeholder sentences. Every section and bullet point must contain unique, specific insights.
+                    2. STRICTLY AVOID ANY REPETITION. Do not repeat sections, do not list titles in multiple foreign languages, and do not use boilerplate placeholder sentences. Every section and bullet point must contain unique, specific insights.
                     3. Write the response entirely in flawless, professional, and natural corporate {report_language}. Avoid literal translations or colloquialisms. 
                     4. Ensure rigorous grammar, punctuation, and syntactic coherence.
                     5. DO NOT use Markdown tables (pipes like '|'). Format all findings as clean, structured bullet points or paragraphs.
                     6. Structure the report into exactly 5 concise sections: 
-                       1. Auditoría técnica:
-                       2. Análisis UI/UX y buyer journey:
-                       3. Revisión de fricción en el proceso de compra:
-                       4. Evaluación de ventaja competitiva:
-                       5. Guía de implementación paso a paso:
+                       1. Auditoría técnica
+                       2. Análisis UI/UX y buyer journey
+                       3. Revisión de fricción en el proceso de compra
+                       4. Evaluación de ventaja competitiva
+                       5. Guía de implementación paso a paso
                     """
                 full_messages = [
                     {

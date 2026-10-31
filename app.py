@@ -48,7 +48,7 @@ elif legal_page == "privacy":
     Los datos de las tiendas analizadas no se comercializan con terceros ni se utilizan para entrenar modelos públicos de inteligencia artificial fuera del flujo operativo del servicio.
 
     **3. Seguridad de las Transacciones**  
-    Los pagos son procesados de forma segura a través de pasarelas externas certificadas (como Lemon Squeezy), sin que nuestra plataforma almacene datos sensibles de tarjetas de crédito.
+    Los pagos son procesados de forma segura a través de pasarelas externas certificadas (como Lemon Squeezy), sin que nossa plataforma almacene datos sensibles de tarjetas de crédito.
     """)
     st.stop()
 
@@ -180,7 +180,7 @@ def calculate_store_metrics(scraped_data, language):
 
 
 def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mobile):
-    """Genera un reporte PDF con diseño corporativo avanzado, tabla de métricas y parser limpio de Markdown."""
+    """Genera un reporte PDF con diseño corporativo avanzado, tabla de métricas y parser seguro de Markdown."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, 
@@ -274,11 +274,16 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
             line = line.replace("Auditorio técnico", "Auditoría técnica")
             line = line.replace("auditorio técnico", "auditoría técnica")
             
+            # Procesamiento seguro de tablas Markdown sin romper etiquetas
             if line.startswith("|") and line.endswith("|"):
                 cells = [c.strip() for c in line.split("|")[1:-1]]
                 cells = [c for c in cells if c]
                 if cells:
-                    clean_line = "• <b>" + "</b>: ".join([html.escape(c) for c in cells]) + ""
+                    escaped_cells = [html.escape(c) for c in cells]
+                    if len(escaped_cells) >= 2:
+                        clean_line = f"• <b>{escaped_cells[0]}</b>: " + " — ".join(escaped_cells[1:])
+                    else:
+                        clean_line = f"• {escaped_cells[0]}"
                 else:
                     continue
             else:
@@ -291,9 +296,19 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
                 elif line.startswith("# "):
                     clean_line = f"<b>{html.escape(line[2:].strip())}</b>"
                 else:
+                    # Escape seguro y balanceo de negritas con **
                     escaped = html.escape(line)
-                    escaped = re.sub(r'\*\*(.*?)\*\*', r'<b>\1</b>', escaped)
-                    escaped = re.sub(r'__(.*?)__', r'<b>\1</b>', escaped)
+                    parts = escaped.split("**")
+                    if len(parts) >= 3:
+                        new_parts = []
+                        for i, part in enumerate(parts):
+                            if i % 2 == 1:
+                                new_parts.append(f"<b>{part}</b>")
+                            else:
+                                new_parts.append(part)
+                        escaped = "".join(new_parts)
+                    else:
+                        escaped = escaped.replace("**", "")
                     
                     if escaped.startswith("- ") or escaped.startswith("* "):
                         escaped = "• " + escaped[2:]
@@ -745,7 +760,6 @@ if "preview_result" in st.session_state:
                     csd = st.session_state["comp_scraped_data"]
                     comp_info = f"\n- COMPETITOR STORE: {st.session_state['competitor_url']}\n  Platform: {csd['platform']}\n  Title: {csd['title']}"
 
-                # PROMPT BLINDADO CON EXIGENCIA GRAMATICAL Y ESTILÍSTICA EXTREMA
                 full_report_prompt = f"""
                     You are a world-class principal e-commerce CRO consultant and an elite executive copywriter. 
                     Analyze the store data from {st.session_state['store_url']}:{comp_info}
@@ -771,7 +785,7 @@ if "preview_result" in st.session_state:
                     },
                     {"role": "user", "content": full_report_prompt},
                 ]
-                full_completion = call_groq_chat(client, full_messages, temperature=0.5)  # Temperatura más baja para más precisión y menos desvíos creativos
+                full_completion = call_groq_chat(client, full_messages, temperature=0.5)
                 st.session_state["full_report_result"] = full_completion.choices[0].message.content
 
         pdf_bytes = generate_pdf_report(

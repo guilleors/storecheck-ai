@@ -48,7 +48,7 @@ elif legal_page == "privacy":
     Los datos de las tiendas analizadas no se comercializan con terceros ni se utilizan para entrenar modelos públicos de inteligencia artificial fuera del flujo operativo del servicio.
 
     **3. Seguridad de las Transacciones**  
-    Los pagos son procesados de forma segura a través de pasarelas externas certificadas (como Lemon Squeezy), sin que nossa plataforma almacene datos sensibles de tarjetas de crédito.
+    Los pagos son procesados de forma segura a través de pasarelas externas certificadas (como Lemon Squeezy), sin que nuestra plataforma almacene datos sensibles de tarjetas de crédito.
     """)
     st.stop()
 
@@ -180,7 +180,7 @@ def calculate_store_metrics(scraped_data, language):
 
 
 def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mobile):
-    """Genera un reporte PDF con diseño corporativo avanzado, tabla de métricas y parser seguro de Markdown."""
+    """Genera un reporte PDF con diseño corporativo avanzado, tabla de métricas y parser limpio sin errores de formato."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, 
@@ -227,6 +227,7 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
         spaceAfter=6
     )
 
+    # Título corregido estrictamente a 'StoreCheck AI'
     story.append(Paragraph("StoreCheck AI — Reporte de Auditoría Profesional", title_style))
     story.append(Paragraph(f"<b>Sitio analizado:</b> {html.escape(store_url)} &nbsp;|&nbsp; <b>Idioma:</b> {html.escape(language)}", meta_style))
     
@@ -257,7 +258,16 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
     story.append(Paragraph(intro_fixed_text, body_style))
     story.append(Spacer(1, 10))
 
-    for block in audit_text.split("\n\n"):
+    # Limpieza estricta de saludos conversacionales de la IA
+    blocks = audit_text.split("\n\n")
+    cleaned_blocks = []
+    for block in blocks:
+        b_lower = block.strip().lower()
+        if any(b_lower.startswith(prefix) for prefix in ["hola", "aquí tienes", "después de analizar", "estimado", "presento"]):
+            continue
+        cleaned_blocks.append(block)
+
+    for block in cleaned_blocks:
         block = block.strip()
         if not block:
             continue
@@ -271,49 +281,44 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
             if re.match(r'^\|?[\s\-:]+\|[\s\-:|]+$', line):
                 continue
             
+            # Correcciones ortográficas y de vocabulario automático
             line = line.replace("Auditorio técnico", "Auditoría técnica")
             line = line.replace("auditorio técnico", "auditoría técnica")
+            line = line.replace("experiencia utilizador", "experiencia de usuario")
+            line = line.replace("e varejas", "minorista / e-commerce")
             
-            # Procesamiento seguro de tablas Markdown sin romper etiquetas
+            # Limpieza total de tablas mal estructuradas o símbolos LaTeX conflictivos
             if line.startswith("|") and line.endswith("|"):
-                cells = [c.strip() for c in line.split("|")[1:-1]]
-                cells = [c for c in cells if c]
-                if cells:
-                    escaped_cells = [html.escape(c) for c in cells]
-                    if len(escaped_cells) >= 2:
-                        clean_line = f"• <b>{escaped_cells[0]}</b>: " + " — ".join(escaped_cells[1:])
-                    else:
-                        clean_line = f"• {escaped_cells[0]}"
-                else:
-                    continue
+                continue
+            
+            # Limpiar fórmulas de LaTeX con símbolos de pesos o flechas feas
+            line = re.sub(r'\$.*?\$', '', line)
+            line = line.replace('$', '')
+
+            if line.startswith("### "):
+                clean_line = f"<b>{html.escape(line[4:].strip())}</b>"
+            elif line.startswith("## "):
+                clean_line = f"<b>{html.escape(line[3:].strip())}</b>"
+            elif line.startswith("# "):
+                clean_line = f"<b>{html.escape(line[2:].strip())}</b>"
             else:
-                line = line.replace('$', '')
-                
-                if line.startswith("### "):
-                    clean_line = f"<b>{html.escape(line[4:].strip())}</b>"
-                elif line.startswith("## "):
-                    clean_line = f"<b>{html.escape(line[3:].strip())}</b>"
-                elif line.startswith("# "):
-                    clean_line = f"<b>{html.escape(line[2:].strip())}</b>"
+                escaped = html.escape(line)
+                parts = escaped.split("**")
+                if len(parts) >= 3:
+                    new_parts = []
+                    for i, part in enumerate(parts):
+                        if i % 2 == 1:
+                            new_parts.append(f"<b>{part}</b>")
+                        else:
+                            new_parts.append(part)
+                    escaped = "".join(new_parts)
                 else:
-                    # Escape seguro y balanceo de negritas con **
-                    escaped = html.escape(line)
-                    parts = escaped.split("**")
-                    if len(parts) >= 3:
-                        new_parts = []
-                        for i, part in enumerate(parts):
-                            if i % 2 == 1:
-                                new_parts.append(f"<b>{part}</b>")
-                            else:
-                                new_parts.append(part)
-                        escaped = "".join(new_parts)
-                    else:
-                        escaped = escaped.replace("**", "")
-                    
-                    if escaped.startswith("- ") or escaped.startswith("* "):
-                        escaped = "• " + escaped[2:]
-                    
-                    clean_line = escaped
+                    escaped = escaped.replace("**", "")
+                
+                if escaped.startswith("- ") or escaped.startswith("* "):
+                    escaped = "• " + escaped[2:]
+                
+                clean_line = escaped
             
             formatted_lines.append(clean_line)
         
@@ -773,10 +778,12 @@ if "preview_result" in st.session_state:
 
                     Provide a comprehensive, deep technical audit report based strictly on these elements. 
                     STRICT EDITORIAL & GRAMMATICAL RULES:
-                    1. Write the response entirely in flawless, professional, and natural corporate {report_language}. Avoid any literal translations, awkward sentence structures, or colloquialisms. 
-                    2. Ensure rigorous grammar, punctuation, and syntactic coherence.
-                    3. Include a detailed UI/UX analysis of the buyer journey, checkout friction review, competitive edge evaluation, and a complete step-by-step technical implementation guide to fix all detected conversion leaks. 
-                    4. Ensure section 1 is strictly titled '1. Auditoría técnica:'.
+                    1. DO NOT include any conversational greetings, intros, or polite filler (e.g., do NOT start with "Hola", "Aquí tienes", "Estimado", "Presento"). Start generating the report directly with section headings (e.g., '1. Auditoría técnica:').
+                    2. Write the response entirely in flawless, professional, and natural corporate {report_language}. Avoid any literal translations, foreign leaks (like Portuguese words like 'varejas'), or colloquialisms. 
+                    3. Ensure rigorous grammar, punctuation, and syntactic coherence.
+                    4. DO NOT use Markdown tables (pipes like '|'). Format all findings as clean, structured bullet points or paragraphs.
+                    5. Include a detailed UI/UX analysis of the buyer journey, checkout friction review, competitive edge evaluation, and a complete step-by-step technical implementation guide to fix all detected conversion leaks. 
+                    6. Ensure section 1 is strictly titled '1. Auditoría técnica:'.
                     """
                 full_messages = [
                     {
@@ -785,7 +792,7 @@ if "preview_result" in st.session_state:
                     },
                     {"role": "user", "content": full_report_prompt},
                 ]
-                full_completion = call_groq_chat(client, full_messages, temperature=0.5)
+                full_completion = call_groq_chat(client, full_messages, temperature=0.4)
                 st.session_state["full_report_result"] = full_completion.choices[0].message.content
 
         pdf_bytes = generate_pdf_report(

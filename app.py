@@ -720,7 +720,7 @@ if "preview_result" in st.session_state:
     )
 
     # Cambiar temporalmente a True para probar la descarga sin pagar
-    is_paid = st.query_params.get("success", "false").lower() == "true"
+    is_paid = True
 
     if is_paid:
         st.success("🎉 ¡Pago verificado con éxito! Generando tu reporte PDF corporativo...")

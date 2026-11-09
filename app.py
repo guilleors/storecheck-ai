@@ -833,8 +833,7 @@ if "preview_result" in st.session_state:
         if is_playbook_paid:
             st.success("🎉 ¡Pago del Playbook Pro verificado con éxito! Ya tenemos los datos de tu auditoría y estamos preparando tu guía técnica a medida para enviártela en un plazo de 24 a 48 horas.")
         else:
-            # Reemplazá este URL con el enlace exacto de checkout de tu producto de $150 USD en Lemon Squeezy cuando lo crees
-            playbook_checkout_url = "https://storecheck-ai.lemonsqueezy.com/checkout/buy/TU_PRODUCTO_ID_150?checkout[redirect_url]=https://storecheck-ai.streamlit.app/?success=true&success_playbook=true"
+            playbook_checkout_url = "https://storecheck-ai.lemonsqueezy.com/checkout/buy/c88fd3da-a0e7-4319-821a-f126d584d96e?checkout[redirect_url]=https://storecheck-ai.streamlit.app/?success=true&success_playbook=true"
             
             st.link_button(
                 label="💳 Pagar $150 USD y Activar Playbook Pro",

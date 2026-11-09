@@ -286,7 +286,6 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
             if re.match(r'^\|?[\s\-:]+\|[\s\-:|]+$', line):
                 continue
             
-            # Limpieza ortográfica y de etiquetas HTML sueltas que escupa la IA
             line = line.replace("Auditorio técnico", "Auditoría técnica")
             line = line.replace("auditorio técnico", "auditoría técnica")
             line = line.replace("experiencia utilizador", "experiencia de usuario")
@@ -299,7 +298,6 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
             line = re.sub(r'\$.*?\$', '', line)
             line = line.replace('$', '')
 
-            # FORZADO DE NUMERACIÓN Y TÍTULOS EN PYTHON PARA EVITAR QUE LA IA LOS PIERDA
             line_lower = line.lower()
             forced_heading = None
             if "auditoría técnica" in line_lower and len(line) < 40:
@@ -379,8 +377,7 @@ ui_language = st.sidebar.selectbox(
 
 enable_comparison = st.sidebar.checkbox("⚔️ Modo Comparación (Tu tienda vs. Competencia)", value=False)
 
-
-# Diccionario i18n 100% integrado
+# Diccionario i18n
 i18n_ui = {
     "Español": {
         "title": "StoreCheck AI",
@@ -567,7 +564,7 @@ def call_groq_chat(client_instance, messages, temperature=0.7):
     last_error = None
     for model_id in chat_models:
         try:
-            response = client_instance_chat_completions = client_instance.chat.completions.create(
+            response = client_instance.chat.completions.create(
                 messages=messages, model=model_id, temperature=temperature
             )
             return response
@@ -594,7 +591,7 @@ st.markdown("---")
 def reset_callback():
     st.session_state["store_url_input"] = ""
     st.session_state["competitor_url_input"] = ""
-    for key in ["preview_result", "scraped_data", "store_url", "full_report_result", "comp_scraped_data", "competitor_url", "consulting_submitted"]:
+    for key in ["preview_result", "scraped_data", "store_url", "full_report_result", "comp_scraped_data", "competitor_url"]:
         if key in st.session_state:
             del st.session_state[key]
 
@@ -828,23 +825,22 @@ if "preview_result" in st.session_state:
         )
 
         st.markdown("---")
-        st.markdown("### 🗺️ ¿Querés un Plan de Acción Quirúrgico Personalizado?")
-        st.info("Si tu equipo de desarrollo o vos necesitan los fragmentos de código exactos, configuraciones de SEO y esquemas listos para insertar sin dar vueltas, solicitá nuestro **Playbook de Implementación Pro** ($150 USD).")
+        st.markdown("### 🗺️ Playbook de Implementación Pro ($150 USD)")
+        st.info("Obtené los snippets de código exactos, configuraciones de SEO y correcciones UI/UX listas para integrar, basadas exclusivamente en los hallazgos de tu auditoría oficial.")
 
-        with st.form(key="consulting_form"):
-            st.markdown("**Solicitar Asesoría Quirúrgica y Snippets a Medida ($150 USD)**")
-            client_email = st.text_input("Tu Correo Electrónico:", placeholder="tu@email.com")
-            dev_notes = st.text_area("Detalles técnicos o dudas específicas para el playbook:", placeholder="Ej: Necesitamos estructurar los metadatos y los eventos de analítica para Shopify...")
-            submit_consulting = st.form_submit_button("🚀 Solicitar Playbook Técnico", use_container_width=True)
+        is_playbook_paid = st.query_params.get("success_playbook", "false").lower() == "true"
 
-            if submit_consulting:
-                if not client_email or "@" not in client_email:
-                    st.warning("Por favor, ingresá un correo electrónico válido.")
-                else:
-                    st.session_state["consulting_submitted"] = True
-
-        if st.session_state.get("consulting_submitted", False):
-            st.success("¡Solicitud registrada con éxito! 🚀 Te enviamos los detalles de pago y entrega a tu casilla. Armaremos tu guía quirúrgica a medida.")
+        if is_playbook_paid:
+            st.success("🎉 ¡Pago del Playbook Pro verificado con éxito! Ya tenemos los datos de tu auditoría y estamos preparando tu guía técnica a medida para enviártela en un plazo de 24 a 48 horas.")
+        else:
+            # Reemplazá este URL con el enlace exacto de checkout de tu producto de $150 USD en Lemon Squeezy cuando lo crees
+            playbook_checkout_url = "https://storecheck-ai.lemonsqueezy.com/checkout/buy/TU_PRODUCTO_ID_150?checkout[redirect_url]=https://storecheck-ai.streamlit.app/?success=true&success_playbook=true"
+            
+            st.link_button(
+                label="💳 Pagar $150 USD y Activar Playbook Pro",
+                url=playbook_checkout_url,
+                use_container_width=True,
+            )
 
     else:
         checkout_url = "https://storecheck-ai.lemonsqueezy.com/checkout/buy/16b5540c-1884-4e2c-a07a-3912222588dc?checkout[redirect_url]=https://storecheck-ai.streamlit.app/?success=true"

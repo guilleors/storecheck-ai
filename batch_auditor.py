@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 from groq import Groq
 import requests
 
-# Configurar cliente de Groq (levanta la clave de las variables de entorno o ponela directo)
+# Configurar cliente de Groq (levanta la clave de las variables de entorno)
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "TU_GROQ_API_KEY_AQUI")
 client = Groq(api_key=GROQ_API_KEY)
 
@@ -15,7 +15,7 @@ def scrape_para_prospecto(url):
     try:
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            "Accept-Language": "es-ES,es;q=0.9",
+            "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
         }
         if not url.startswith("http://") and not url.startswith("https://"):
             url = "https://" + url
@@ -57,8 +57,36 @@ def scrape_para_prospecto(url):
         return None, str(e)
 
 
-def generar_correo_en_frio(nombre, empresa, dominio, datos_tienda):
-    """Le pide a Groq que redacte un correo de prospección corto, directo y con un teaser técnico."""
+def determinar_idioma(pais):
+    """Mapea el país del prospecto al idioma correspondiente para la campaña global."""
+    pais_lower = (pais or "").lower()
+    if any(p in pais_lower for p in ["brazil", "brasil"]):
+        return "Portuguese"
+    elif any(p in pais_lower for p in ["france", "francia"]):
+        return "French"
+    elif any(p in pais_lower for p in ["italy", "italia"]):
+        return "Italian"
+    elif any(
+        p in pais_lower
+        for p in [
+            "spain",
+            "mexico",
+            "argentina",
+            "colombia",
+            "chile",
+            "peru",
+            "españa",
+        ]
+    ):
+        return "Spanish"
+    else:
+        return "English"  # Idioma por defecto para EE.UU., UK y mercados internacionales
+
+
+def generar_correo_en_frio(nombre, empresa, dominio, pais, datos_tienda):
+    """Redacta el correo en frío adaptado automáticamente al idioma del país del prospecto."""
+    idioma_destino = determinar_idioma(pais)
+
     prompt = f"""
     You are an expert e-commerce CRO consultant. Write a short, persuasive, and high-converting cold email addressed to {nombre}, Founder/Manager of {empresa} ({dominio}).
     
@@ -72,8 +100,8 @@ def generar_correo_en_frio(nombre, empresa, dominio, datos_tienda):
     1. Do not use spammy corporate jargon. Be direct and conversational.
     2. Mention 1 specific technical friction point or observation found on their site based on the data.
     3. Pitch a low-friction solution: offer a complete automated CRO audit report ($19 USD) that details exact fixes to increase conversion rates.
-    4. Write entirely in Spanish.
-    5. Include placeholders for [Asunto] and [Cuerpo].
+    4. Write the response entirely in flawless, native {idioma_destino}.
+    5. Include placeholders for [Subject] and [Body].
     """
 
     try:
@@ -93,11 +121,11 @@ def procesar_prospectos():
 
     if not os.path.exists(input_csv):
         print(
-            f"❌ No se encontró el archivo '{input_csv}'. Ejecutá primero el script de Apollo."
+            f"❌ No se encontró el archivo '{input_csv}'. Asegurate de tener los leads cargados."
         )
         return
 
-    print(f"📂 Leyendo prospectos desde {input_csv}...")
+    print(f"📂 Leyendo prospectos globales desde {input_csv}...")
 
     resultados_campana = []
 
@@ -108,15 +136,16 @@ def procesar_prospectos():
             empresa = row.get("empresa", "su tienda")
             dominio = row.get("dominio", "")
             email = row.get("email", "")
+            pais = row.get("pais", "")
 
             if not dominio:
                 continue
 
             print(
-                f"\n🔍 Analizando tienda de {nombre} ({empresa}) -> {dominio}"
+                f"\n🔍 Analizando tienda de {nombre} ({empresa} - {pais}) -> {dominio}"
             )
 
-            # 1. Scrapear la tienda del prospecto
+            # 1. Scrapear la tienda
             datos_tienda, estado = scrape_para_prospecto(dominio)
 
             if not datos_tienda:
@@ -125,10 +154,12 @@ def procesar_prospectos():
                 )
                 continue
 
-            # 2. Generar el correo personalizado con IA
-            print(f"🤖 Redactando correo personalizado con IA...")
+            # 2. Generar correo en su idioma nativo
+            print(
+                f"🤖 Redactando correo personalizado en {determinar_idioma(pais)}..."
+            )
             email_generado = generar_correo_en_frio(
-                nombre, empresa, dominio, datos_tienda
+                nombre, empresa, dominio, pais, datos_tienda
             )
 
             resultados_campana.append(
@@ -137,21 +168,19 @@ def procesar_prospectos():
                     "nombre": nombre,
                     "empresa": empresa,
                     "dominio": dominio,
-                    "correo_propuesto": email_generado.replace(
-                        "\n", " [BR] "
-                    ),  # Limpieza para CSV
+                    "pais": pais,
+                    "correo_propuesto": email_generado.replace("\n", " [BR] "),
                 }
             )
 
-            # Pausa breve para no saturar la API de Groq
             time.sleep(1)
 
-    # Guardar resultados listos para enviar
     campos = [
         "email_destino",
         "nombre",
         "empresa",
         "dominio",
+        "pais",
         "correo_propuesto",
     ]
     with open(
@@ -162,7 +191,7 @@ def procesar_prospectos():
         writer.writerows(resultados_campana)
 
     print(
-        f"\n🎉 ¡Proceso finalizado! Se generaron {len(resultados_campana)} correos personalizados en '{output_csv}'."
+        f"\n🎉 ¡Proceso finalizado! Se generaron {len(resultados_campana)} correos globales en '{output_csv}'."
     )
 
 

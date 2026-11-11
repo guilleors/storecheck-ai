@@ -9,6 +9,7 @@ import requests
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "TU_GROQ_API_KEY_AQUI")
 client = Groq(api_key=GROQ_API_KEY)
 
+EMAIL_REMITENTE = "StoreCheck AI <onboarding@resend.dev>"
 
 def scrape_para_prospecto(url):
     """Reutiliza la lógica de scraping para evaluar la tienda del prospecto."""

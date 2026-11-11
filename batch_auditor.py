@@ -7,9 +7,11 @@ import requests
 
 # Configurar cliente de Groq (levanta la clave de las variables de entorno)
 GROQ_API_KEY = os.getenv("GROQ_API_KEY", "TU_GROQ_API_KEY_AQUI")
-client = Groq(api_key=GROQ_API_KEY)
+resend.api_key = os.getenv("RESEND_API_KEY")
 
 EMAIL_REMITENTE = "StoreCheck AI <onboarding@resend.dev>"
+
+client = Groq(api_key=GROQ_API_KEY)
 
 def scrape_para_prospecto(url):
     """Reutiliza la lógica de scraping para evaluar la tienda del prospecto."""

@@ -10,7 +10,7 @@ from groq import Groq
 resend.api_key = os.getenv("RESEND_API_KEY")
 groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-ARCHIVO_MAESTRO = "leads_globales.csv"
+ARCHIVO_MAESTRO = "prospectos_storecheck.csv"  # Apunta al archivo de prospectos actual
 ARCHIVO_LOG = "historial_invitaciones_globales.csv"
 
 # Diccionario de equivalencias multilingües para unificar encabezados del CSV
@@ -68,13 +68,13 @@ def guardar_en_log(datos):
 
 def leer_leads_maestros():
     if not os.path.exists(ARCHIVO_MAESTRO):
-        print(f"⚠️ No se encontró '{ARCHIVO_MAESTRO}'. Ejecutá primero 'recolector_global.py'.")
+        print(f"⚠️ No se encontró '{ARCHIVO_MAESTRO}'. Verificá el archivo en la carpeta.")
         return []
     with open(ARCHIVO_MAESTRO, mode="r", encoding="utf-8") as f:
         return list(csv.DictReader(f))
 
 def redactar_invitacion_inteligente(nombre, web, pais):
-    """Adapta el idioma según región macro y asegura saludo cálido con pregunta directa"""
+    """Adapta el idioma según región macro y utiliza selección dinámica de modelos en Groq"""
     
     es_generico = not nombre or nombre.strip().lower() in ["equipo", "team", "hola", "info", "admin", "desconocido"]
     
@@ -112,13 +112,35 @@ def redactar_invitacion_inteligente(nombre, web, pais):
     4. Responde ÚNICAMENTE con un JSON válido con las claves: "idioma_usado", "asunto", "cuerpo".
     """
     
-    completion = groq_client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[{"role": "user", "content": prompt}],
-        temperature=0.3,
-        response_format={"type": "json_object"}
-    )
-    return json.loads(completion.choices[0].message.content)
+    # Selector dinámico de modelos de Groq para evitar errores 404 de modelos obsoletos
+    try:
+        models_response = groq_client.models.list()
+        all_models = [m.id for m in models_response.data]
+        excluded_keywords = ["guard", "classifier", "tool", "moderation", "vision"]
+        chat_models = [m_id for m_id in all_models if not any(kw in m_id.lower() for kw in excluded_keywords)]
+    except Exception:
+        chat_models = ["llama-3.3-70b-versatile", "llama-3.1-70b-versatile"]
+
+    if not chat_models:
+        chat_models = ["llama-3.3-70b-versatile"]
+
+    chat_models.sort(key=lambda name: (0 if "70b" in name.lower() or "versatile" in name.lower() else (1 if "instant" in name.lower() else 2)))
+    
+    last_error = None
+    for model_id in chat_models:
+        try:
+            completion = groq_client.chat.completions.create(
+                model=model_id,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                response_format={"type": "json_object"}
+            )
+            return json.loads(completion.choices[0].message.content)
+        except Exception as e:
+            last_error = e
+            continue
+            
+    raise Exception(f"No se pudo conectar con ningún modelo de Groq: {last_error}")
 
 def ejecutar_fase1_lotes():
     ya_contactados = cargar_emails_enviados()
@@ -160,7 +182,8 @@ def ejecutar_fase1_lotes():
                 "subject": asunto,
                 "html": f"<p>{cuerpo}</p>"
             }
-            # Descomentá cuando habilites el envío masivo real con Resend:
+            
+            # LÍNEA DE ENVÍO COMENTADA PARA SEGURIDAD (Descomentar solo para pruebas de un único correo)
             # resend.Emails.send(params)
             
             guardar_en_log({

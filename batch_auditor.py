@@ -1,202 +1,158 @@
-import csv
 import os
+import csv
+import json
 import time
-from bs4 import BeautifulSoup
-from groq import Groq
 import requests
+import resend
+from groq import Groq
 
-# Configurar cliente de Groq (levanta la clave de las variables de entorno)
-GROQ_API_KEY = os.getenv("GROQ_API_KEY", "TU_GROQ_API_KEY_AQUI")
+# 1. Credenciales desde variables de entorno
 resend.api_key = os.getenv("RESEND_API_KEY")
+groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+APOLLO_API_KEY = os.getenv("APOLLO_API_KEY")
 
-EMAIL_REMITENTE = "StoreCheck AI <onboarding@resend.dev>"
+ARCHIVO_LOG = "historial_invitaciones_globales.csv"
 
-client = Groq(api_key=GROQ_API_KEY)
+def cargar_emails_enviados():
+    """Evita volver a escribirle a alguien que ya fue contactado"""
+    if not os.path.exists(ARCHIVO_LOG):
+        return set()
+    with open(ARCHIVO_LOG, mode="r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        return {row["email"] for row in reader if row.get("email")}
 
-def scrape_para_prospecto(url):
-    """Reutiliza la lógica de scraping para evaluar la tienda del prospecto."""
-    try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
-        }
-        if not url.startswith("http://") and not url.startswith("https://"):
-            url = "https://" + url
+def guardar_en_log(datos):
+    """Guarda cada registro para control de la Fase 1"""
+    archivo_existe = os.path.exists(ARCHIVO_LOG)
+    with open(ARCHIVO_LOG, mode="a", newline="", encoding="utf-8") as f:
+        campos = ["fecha", "nombre", "email", "web", "pais", "idioma", "asunto", "estado"]
+        writer = csv.DictWriter(f, fieldnames=campos)
+        if not archivo_existe:
+            writer.writeheader()
+        writer.writerow(datos)
 
-        response = requests.get(url, headers=headers, timeout=10)
-        if response.status_code != 200:
-            return None, f"Error HTTP {response.status_code}"
-
-        soup = BeautifulSoup(response.text, "html.parser")
-        title = soup.title.string.strip() if soup.title else "Sin título"
-
-        html_content = response.text.lower()
-        platform = "Personalizada"
-        if "shopify" in html_content:
-            platform = "Shopify"
-        elif "woocommerce" in html_content:
-            platform = "WooCommerce"
-        elif "tiendanube" in html_content:
-            platform = "Tiendanube"
-
-        has_cart = (
-            bool(soup.find_all(class_=lambda x: x and "cart" in x.lower()))
-            or "carrito" in html_content
-        )
-        has_checkout = "checkout" in html_content or "pagar" in html_content
-
-        for script in soup(["script", "style", "nav", "footer"]):
-            script.extract()
-        snippet = soup.get_text(separator=" ", strip=True)[:800]
-
-        return {
-            "platform": platform,
-            "title": title,
-            "has_cart": has_cart,
-            "has_checkout": has_checkout,
-            "snippet": snippet,
-        }, "OK"
-    except Exception as e:
-        return None, str(e)
-
-
-def determinar_idioma(pais):
-    """Mapea el país del prospecto al idioma correspondiente para la campaña global."""
-    pais_lower = (pais or "").lower()
-    if any(p in pais_lower for p in ["brazil", "brasil"]):
-        return "Portuguese"
-    elif any(p in pais_lower for p in ["france", "francia"]):
-        return "French"
-    elif any(p in pais_lower for p in ["italy", "italia"]):
-        return "Italian"
-    elif any(
-        p in pais_lower
-        for p in [
-            "spain",
-            "mexico",
-            "argentina",
-            "colombia",
-            "chile",
-            "peru",
-            "españa",
-        ]
-    ):
-        return "Spanish"
-    else:
-        return "English"  # Idioma por defecto para EE.UU., UK y mercados internacionales
-
-
-def generar_correo_en_frio(nombre, empresa, dominio, pais, datos_tienda):
-    """Redacta el correo en frío adaptado automáticamente al idioma del país del prospecto."""
-    idioma_destino = determinar_idioma(pais)
-
-    prompt = f"""
-    You are an expert e-commerce CRO consultant. Write a short, persuasive, and high-converting cold email addressed to {nombre}, Founder/Manager of {empresa} ({dominio}).
+def buscar_prospectos_apollo(pagina=1, cantidad=5):
+    """Busca decisores de e-commerce usando Apollo.io"""
+    url = "https://api.apollo.io/api/v1/mixed_people/api_search"
+    headers = {
+        "Content-Type": "application/json",
+        "Cache-Control": "no-cache",
+        "x-api-key": APOLLO_API_KEY
+    }
+    payload = {
+        "person_titles": ["Ecommerce Manager", "Head of Ecommerce", "Founder", "CEO"],
+        "q_organization_keyword_tags": ["ecommerce", "retail", "online store"],
+        "contact_email_status": ["verified"],
+        "per_page": cantidad,
+        "page": pagina
+    }
     
-    Store technical details found:
-    - Platform: {datos_tienda['platform']}
-    - Title: {datos_tienda['title']}
-    - Cart/Checkout operational: {datos_tienda['has_cart']} / {datos_tienda['has_checkout']}
-    - Content sample: {datos_tienda['snippet'][:400]}
+    print(f"🌐 Buscando empresas e-commerce en Apollo.io (Página {pagina})...")
+    response = requests.post(url, json=payload, headers=headers)
+    
+    if response.status_code == 200:
+        return response.json().get("people", [])
+    else:
+        print(f"❌ Error en Apollo: {response.status_code} - {response.text}")
+        return []
 
-    Rules for the email:
-    1. Do not use spammy corporate jargon. Be direct and conversational.
-    2. Mention 1 specific technical friction point or observation found on their site based on the data.
-    3. Pitch a low-friction solution: offer a complete automated CRO audit report ($19 USD) that details exact fixes to increase conversion rates.
-    4. Write the response entirely in flawless, native {idioma_destino}.
-    5. Include placeholders for [Subject] and [Body].
+def redactar_por_pais_de_origen(nombre, web, pais):
+    """Regla estricta: El país de la empresa determina 100% el idioma del correo"""
+    prompt = f"""
+    Actúa como un especialista en optimización de tiendas online (CRO).
+    
+    Datos del prospecto:
+    - Nombre del contacto: {nombre}
+    - Sitio web: {web}
+    - País donde está radicada la empresa: {pais}
+    
+    Regla de idioma estricta:
+    Determina el idioma oficial del país "{pais}" y redacta el correo en ESE idioma nativo.
+    Ejemplos:
+    - Francia -> Francés
+    - Perú / España / México -> Español
+    - Brasil -> Portugués
+    - Alemania -> Alemán
+    - EE.UU. / Reino Unido / Canadá -> Inglés
+    (Si el país es desconocido o no figura, usa inglés por defecto).
+    
+    Plantilla base a traducir/adaptar al idioma oficial del país:
+    "Hola {nombre}, me tomé el atrevimiento de explorar {web} y observé algunos detalles que pueden estar afectando el flujo de ventas. ¿Te interesaría un reporte rápido y sin costo con algunos puntos a mejorar?"
+    
+    Instrucciones:
+    1. Traduce la plantilla de forma natural, fluida y humana al idioma oficial de {pais}.
+    2. Crea un asunto (subject) corto en ese mismo idioma (ej. "Una consulta sobre {web}").
+    3. Responde ÚNICAMENTE con un JSON válido con las claves: "idioma_usado", "asunto", "cuerpo".
     """
+    
+    completion = groq_client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.3,
+        response_format={"type": "json_object"}
+    )
+    return json.loads(completion.choices[0].message.content)
 
-    try:
-        response = client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
-            model="llama-3.3-70b-versatile",
-            temperature=0.7,
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        return f"Error generando correo: {e}"
-
-
-def procesar_prospectos():
-    input_csv = "prospectos_storecheck.csv"
-    output_csv = "campana_emails_listos.csv"
-
-    if not os.path.exists(input_csv):
-        print(
-            f"❌ No se encontró el archivo '{input_csv}'. Asegurate de tener los leads cargados."
-        )
+def ejecutar_fase1():
+    ya_contactados = cargar_emails_enviados()
+    prospectos = buscar_prospectos_apollo(pagina=1, cantidad=5)
+    
+    if not prospectos:
+        print("No se encontraron prospectos.")
         return
 
-    print(f"📂 Leyendo prospectos globales desde {input_csv}...")
+    print(f"✅ Se obtuvieron {len(prospectos)} prospectos para evaluar.\n")
 
-    resultados_campana = []
+    for p in prospectos:
+        nombre = p.get("first_name") or p.get("name", "hola")
+        email = p.get("email")
+        org = p.get("organization", {})
+        web = org.get("primary_domain") or org.get("name", "su sitio web")
+        pais = org.get("country") or p.get("country") or "Desconocido"
 
-    with open(input_csv, mode="r", encoding="utf-8") as file:
-        reader = csv.DictReader(file)
-        for row in reader:
-            nombre = row.get("nombre", "Hola")
-            empresa = row.get("empresa", "su tienda")
-            dominio = row.get("dominio", "")
-            email = row.get("email", "")
-            pais = row.get("pais", "")
+        if not email or not web:
+            continue
 
-            if not dominio:
-                continue
+        if email in ya_contactados:
+            print(f"⏭️ Saltando {email} (ya procesado previamente).")
+            continue
 
-            print(
-                f"\n🔍 Analizando tienda de {nombre} ({empresa} - {pais}) -> {dominio}"
-            )
+        print(f"📍 Empresa radicada en: {pais} | Contacto: {nombre} | Web: {web}")
+        
+        resultado = redactar_por_pais_de_origen(nombre, web, pais)
+        idioma = resultado.get("idioma_usado")
+        asunto = resultado.get("asunto")
+        cuerpo = resultado.get("cuerpo")
 
-            # 1. Scrapear la tienda
-            datos_tienda, estado = scrape_para_prospecto(dominio)
+        print(f"🗣️ Idioma asignado: {idioma}")
+        print(f"📌 Asunto: {asunto}")
+        print(f"✉️ Mensaje:\n{cuerpo}\n")
 
-            if not datos_tienda:
-                print(
-                    f"⚠️ No se pudo auditar {dominio} ({estado}). Saltando..."
-                )
-                continue
-
-            # 2. Generar correo en su idioma nativo
-            print(
-                f"🤖 Redactando correo personalizado en {determinar_idioma(pais)}..."
-            )
-            email_generado = generar_correo_en_frio(
-                nombre, empresa, dominio, pais, datos_tienda
-            )
-
-            resultados_campana.append(
-                {
-                    "email_destino": email,
-                    "nombre": nombre,
-                    "empresa": empresa,
-                    "dominio": dominio,
-                    "pais": pais,
-                    "correo_propuesto": email_generado.replace("\n", " [BR] "),
-                }
-            )
-
+        try:
+            params = {
+                "from": "StoreCheck AI <onboarding@resend.dev>",
+                "to": [email],
+                "subject": asunto,
+                "html": f"<p>{cuerpo}</p>"
+            }
+            # Descomentar al tener el dominio final en Resend:
+            # resend.Emails.send(params)
+            
+            guardar_en_log({
+                "fecha": time.strftime("%Y-%m-%d %H:%M"),
+                "nombre": nombre,
+                "email": email,
+                "web": web,
+                "pais": pais,
+                "idioma": idioma,
+                "asunto": asunto,
+                "estado": "Invitacion enviada"
+            })
+            ya_contactados.add(email)
             time.sleep(1)
-
-    campos = [
-        "email_destino",
-        "nombre",
-        "empresa",
-        "dominio",
-        "pais",
-        "correo_propuesto",
-    ]
-    with open(
-        output_csv, mode="w", newline="", encoding="utf-8"
-    ) as output_file:
-        writer = csv.DictWriter(output_file, fieldnames=campos)
-        writer.writeheader()
-        writer.writerows(resultados_campana)
-
-    print(
-        f"\n🎉 ¡Proceso finalizado! Se generaron {len(resultados_campana)} correos globales en '{output_csv}'."
-    )
-
+            
+        except Exception as e:
+            print(f"❌ Error con {email}: {e}\n")
 
 if __name__ == "__main__":
-    procesar_prospectos()
+    ejecutar_fase1()

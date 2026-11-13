@@ -591,7 +591,7 @@ st.markdown("---")
 def reset_callback():
     st.session_state["store_url_input"] = ""
     st.session_state["competitor_url_input"] = ""
-    for key in ["preview_result", "scraped_data", "store_url", "full_report_result", "comp_scraped_data", "competitor_url"]:
+    for key in ["preview_result", "scraped_data", "store_url", "full_report_result", "playbook_report_result", "comp_scraped_data", "competitor_url"]:
         if key in st.session_state:
             del st.session_state[key]
 
@@ -707,8 +707,9 @@ if run_audit:
                 if "comp_scraped_data" in st.session_state:
                     del st.session_state["comp_scraped_data"]
 
-            if "full_report_result" in st.session_state:
-                del st.session_state["full_report_result"]
+            for key_to_del in ["full_report_result", "playbook_report_result"]:
+                if key_to_del in st.session_state:
+                    del st.session_state[key_to_del]
 
         except Exception as e:
             progress_bar.empty()
@@ -831,7 +832,59 @@ if "preview_result" in st.session_state:
         is_playbook_paid = st.query_params.get("success_playbook", "false").lower() == "true"
 
         if is_playbook_paid:
-            st.success("🎉 ¡Pago del Playbook Pro verificado con éxito! Ya tenemos los datos de tu auditoría y estamos preparando tu guía técnica a medida para enviártela en un plazo de 24 a 48 horas.")
+            st.success("🎉 ¡Pago del Playbook Pro verificado con éxito! Tu guía técnica de implementación y snippets a medida ya están listos.")
+
+            if "playbook_report_result" not in st.session_state:
+                with st.spinner("🤖 Compilando Playbook Pro con snippets de código y optimizaciones CRO avanzadas..."):
+                    sd = st.session_state["scraped_data"]
+                    comp_info = ""
+                    if "comp_scraped_data" in st.session_state:
+                        csd = st.session_state["comp_scraped_data"]
+                        comp_info = f"\n- COMPETITOR STORE: {st.session_state['competitor_url']}\n  Platform: {csd['platform']}\n  Title: {csd['title']}"
+
+                    playbook_prompt = f"""
+                        You are a master e-commerce CRO architect and senior full-stack developer.
+                        Based on the store data from {st.session_state['store_url']}:{comp_info}
+                        - Platform: {sd['platform']}
+                        - Title: {sd['title']}
+                        - Cart/Checkout Ready: {sd['has_cart_button']} / {sd['has_checkout_link']}
+                        - Gateways: {', '.join(sd['payment_gateways'])}
+                        - Snippet: {sd['raw_text'][:1800]}
+
+                        Generate an elite, highly practical Technical Implementation Playbook Pro.
+                        STRICT RULES:
+                        1. No conversational greetings or intro fluff. Start directly with section headings.
+                        2. Provide concrete technical solutions tailored to this store's platform ({sd['platform']}).
+                        3. Include precise code snippets (such as CSS tweaks for mobile checkout, Schema JSON-LD blocks, or cart friction fixes) formatted cleanly without markdown pipes ('|').
+                        4. Write the response entirely in professional, corporate {report_language}.
+                        5. Structure into 4 clean sections:
+                           1. Diagnóstico crítico de conversión
+                           2. Snippets de código y optimización frontend
+                           3. Arquitectura del checkout y pasarelas de pago
+                           4. Plan de acción de 7 días para escalar
+                        """
+                    
+                    playbook_messages = [
+                        {"role": "system", "content": "You are an elite technical consultant and e-commerce conversion architect."},
+                        {"role": "user", "content": playbook_prompt},
+                    ]
+                    playbook_completion = call_groq_chat(client, playbook_messages, temperature=0.3)
+                    st.session_state["playbook_report_result"] = playbook_completion.choices[0].message.content
+
+            pdf_playbook_bytes = generate_pdf_report(
+                st.session_state["store_url"],
+                st.session_state["playbook_report_result"],
+                report_language,
+                health, seo, speed, mobile
+            )
+            
+            st.download_button(
+                label="📥 Descargar mi Playbook Pro de Implementación (PDF)",
+                data=pdf_playbook_bytes,
+                file_name="StoreCheck_AI_Playbook_Pro.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+            )
         else:
             playbook_checkout_url = "https://storecheck-ai.lemonsqueezy.com/checkout/buy/c88fd3da-a0e7-4319-821a-f126d584d96e?checkout[redirect_url]=https://storecheck-ai.streamlit.app/?success=true&success_playbook=true"
             

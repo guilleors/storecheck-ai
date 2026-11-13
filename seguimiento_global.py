@@ -7,15 +7,20 @@ import email
 from email.utils import parsedate_to_datetime
 import unicodedata
 from datetime import datetime
-import resend
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from groq import Groq
 
-# Configuración de credenciales
-resend.api_key = os.getenv("RESEND_API_KEY")
-groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+# Importamos las credenciales desde el archivo local privado (config.py)
+try:
+    from config import GMAIL_USER, GMAIL_APP_PASSWORD, GROQ_API_KEY
+except ImportError:
+    GMAIL_USER = os.getenv("GMAIL_USER", "storecheckai@gmail.com")
+    GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
+    GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 
-GMAIL_USER = "storecheckai@gmail.com"
-GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
+groq_client = Groq(api_key=GROQ_API_KEY)
 
 ARCHIVO_HISTORIAL = "historial_invitaciones_globales.csv"
 DIAS_ESPERA = 4
@@ -82,7 +87,7 @@ def clasificar_respuesta_cliente(texto_respuesta):
 def detectar_respuestas_gmail(filas):
     """Revisa storecheckai@gmail.com vía IMAP, clasifica la respuesta y actualiza el estado."""
     if not GMAIL_APP_PASSWORD:
-        print("⚠️ No se detectó GMAIL_APP_PASSWORD en PowerShell. Se omite el chequeo automático de bandeja.\n")
+        print("⚠️ No se detectó GMAIL_APP_PASSWORD. Se omite el chequeo automático de bandeja.\n")
         return 0
 
     pendientes = {}
@@ -123,7 +128,6 @@ def detectar_respuestas_gmail(filas):
                         es_posterior = True
 
                 if es_posterior:
-                    # Extraer el cuerpo del mensaje del cliente
                     cuerpo_cliente = ""
                     if msg.is_multipart():
                         for part in msg.walk():
@@ -133,7 +137,6 @@ def detectar_respuestas_gmail(filas):
                     else:
                         cuerpo_cliente = msg.get_payload(decode=True).decode(errors="ignore")
 
-                    # Clasificar con IA
                     intencion = clasificar_respuesta_cliente(cuerpo_cliente)
 
                     if intencion == "Interesado":
@@ -154,6 +157,25 @@ def detectar_respuestas_gmail(filas):
 
     print(f"📊 Chequeo de bandeja finalizado: {marcados} respuestas procesadas.\n")
     return marcados
+
+def enviar_correo_smtp(destinatario, asunto, cuerpo):
+    """Envía el correo mediante el servidor SMTP oficial de Gmail usando TLS."""
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = GMAIL_USER
+        msg['To'] = destinatario
+        msg['Subject'] = asunto
+        msg.attach(MIMEText(cuerpo, 'plain', 'utf-8'))
+        
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+        server.sendmail(GMAIL_USER, destinatario, msg.as_string())
+        server.quit()
+        return True
+    except Exception as e:
+        print(f"[-] Error al enviar correo por SMTP a {destinatario}: {e}")
+        return False
 
 def redactar_seguimiento_inteligente(nombre, web, pais):
     idioma = obtener_idioma_por_pais(pais)
@@ -207,10 +229,8 @@ def ejecutar_seguimientos():
         print("📭 El historial está vacío.")
         return
 
-    # Paso 1: Detectar y clasificar respuestas automáticamente en storecheckai@gmail.com
     respuestas_nuevas = detectar_respuestas_gmail(filas)
 
-    # Paso 2: Enviar seguimiento a los que siguen en "Invitacion enviada" tras 4 días
     ahora = datetime.now()
     seguimientos_enviados = 0
 
@@ -245,26 +265,21 @@ def ejecutar_seguimientos():
                 print(f"👤 Idioma: {obtener_idioma_por_pais(pais)} | Asunto: {asunto}")
                 print(f"✉️ Mensaje:\n{cuerpo}\n")
 
-                params = {
-                    "from": "StoreCheck AI <onboarding@resend.dev>", # <-- Cambiar por dominio propio al salir a producción
-                    "to": [email_dest],
-                    "reply_to": "storecheckai@gmail.com",
-                    "subject": asunto,
-                    "text": cuerpo
-                }
+                exito = enviar_correo_smtp(email_dest, asunto, cuerpo)
 
-                # DESCOMENTAR ESTA LÍNEA PARA ENVIAR SEGUIMIENTOS REALES:
-                # resend.Emails.send(params)
+                if exito:
+                    set_col(fila, "estado", "Seguimiento enviado")
+                    set_col(fila, "fecha", ahora.strftime("%Y-%m-%d %H:%M:%S"))
+                    seguimientos_enviados += 1
+                    print(f"✅ Seguimiento enviado a {email_dest}.\n")
+                else:
+                    print(f"❌ Falló el envío SMTP de seguimiento a {email_dest}.\n")
 
-                set_col(fila, "estado", "Seguimiento enviado")
-                set_col(fila, "fecha", ahora.strftime("%Y-%m-%d %H:%M:%S"))
-                seguimientos_enviados += 1
                 time.sleep(1.5)
 
             except Exception as e:
                 print(f"❌ Error procesando seguimiento para {email_dest}: {e}\n")
 
-    # Paso 3: Guardar CSV si hubo cambios
     if respuestas_nuevas > 0 or seguimientos_enviados > 0:
         with open(ARCHIVO_HISTORIAL, mode="w", newline="", encoding="utf-8-sig") as f:
             writer = csv.DictWriter(f, fieldnames=columnas)

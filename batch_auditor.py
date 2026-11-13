@@ -3,13 +3,21 @@ import csv
 import json
 import time
 import unicodedata
+import smtplib
 from datetime import datetime
-import resend
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from groq import Groq
 
-# Configuración de credenciales
-resend.api_key = os.getenv("RESEND_API_KEY")
-groq_client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+# Importamos las credenciales desde el archivo local privado (config.py)
+try:
+    from config import GMAIL_USER, GMAIL_APP_PASSWORD, GROQ_API_KEY
+except ImportError:
+    GMAIL_USER = os.getenv("GMAIL_USER", "storecheckai@gmail.com")
+    GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
+    GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+groq_client = Groq(api_key=GROQ_API_KEY)
 
 ARCHIVO_PROSPECTOS = "prospectos_storecheck.csv"
 ARCHIVO_HISTORIAL = "historial_invitaciones_globales.csv"
@@ -89,6 +97,25 @@ def redactar_invitacion_inteligente(nombre, web, pais):
 
     raise Exception(f"No se pudo conectar con ningún modelo de Groq: {last_error}")
 
+def enviar_correo_smtp(destinatario, asunto, cuerpo):
+    """Envía el correo mediante el servidor SMTP oficial de Gmail usando TLS."""
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = GMAIL_USER
+        msg['To'] = destinatario
+        msg['Subject'] = asunto
+        msg.attach(MIMEText(cuerpo, 'plain', 'utf-8'))
+        
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
+        server.sendmail(GMAIL_USER, destinatario, msg.as_string())
+        server.quit()
+        return True
+    except Exception as e:
+        print(f"[-] Error al enviar correo por SMTP a {destinatario}: {e}")
+        return False
+
 def procesar_lote():
     if not os.path.exists(ARCHIVO_PROSPECTOS):
         print(f"❌ No se encontró el archivo '{ARCHIVO_PROSPECTOS}'.")
@@ -131,29 +158,25 @@ def procesar_lote():
                 print(f"👤 Idioma: {obtener_idioma_por_pais(pais)} | Asunto: {asunto}")
                 print(f"✉️ Mensaje:\n{cuerpo}\n")
 
-                params = {
-                    "from": "StoreCheck AI <onboarding@resend.dev>", # <-- Cambiar por tu remitente verificado en Resend cuando salgas a producción
-                    "to": [email],
-                    "reply_to": "storecheckai@gmail.com",
-                    "subject": asunto,
-                    "text": cuerpo
-                }
+                exito = enviar_correo_smtp(email, asunto, cuerpo)
 
-                # DESCOMENTAR ESTA LÍNEA PARA ENVIAR CORREOS REALES:
-                # resend.Emails.send(params)
+                if exito:
+                    writer.writerow({
+                        "Fecha": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                        "Email": email,
+                        "Web": web,
+                        "Contacto": nombre,
+                        "Pais": pais,
+                        "Estado": "Invitacion enviada"
+                    })
+                    f_hist.flush()
 
-                writer.writerow({
-                    "Fecha": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                    "Email": email,
-                    "Web": web,
-                    "Contacto": nombre,
-                    "Pais": pais,
-                    "Estado": "Invitacion enviada"
-                })
-                f_hist.flush()
+                    emails_enviados.add(email)
+                    nuevas_invitaciones += 1
+                    print(f"✅ Registrado con éxito en el historial.\n")
+                else:
+                    print(f"❌ Falló el envío SMTP a {email}.\n")
 
-                emails_enviados.add(email)
-                nuevas_invitaciones += 1
                 time.sleep(1.5)
 
             except Exception as e:

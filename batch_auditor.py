@@ -29,26 +29,28 @@ def registrar_enviado(email):
 
 def generar_correo(nombre, web, pais):
     system_prompt = (
-        "Eres un desarrollador independiente especializado en auditorías de e-commerce. "
-        "Escribes correos de manera ultra natural, directos, conversacionales y tipo 'peer-to-peer', "
-        "evitando por completo el tono comercial, corporativo o spam. "
-        "El objetivo es ofrecer una auditoría inicial de conversión para StoreCheck AI."
+        "Sos un desarrollador web independiente escribiendo un mail de contacto en frío. "
+        "Tu única tarea es adaptar el texto de ejemplo al nombre y la web del prospecto, "
+        "manteniendo exactamente el mismo tono educado, directo y natural de Argentina ('Mirá, me tomé el atrevimiento...'). "
+        "No inventes párrafos nuevos ni cambies la estructura."
     )
     
     user_prompt = (
-        f"Escribe un correo de contacto en frío muy breve y humano para {nombre}, que está a cargo de {web} (ubicado en {pais}). "
-        "Menciona que estuviste chusmeando su tienda y viste un par de detalles de fricción en el checkout o la conversión "
-        "que se pueden optimizar rápido. Pregúntale si le interesa que le pases un pantallazo rápido sin compromiso."
+        f"Tomá como base este texto exacto y adaptalo para {nombre} que está a cargo de {web} (ubicado en {pais}):\n\n"
+        f"Hola, {nombre}, ¿cómo estás?\n"
+        f"Mirá, me tomé el atrevimiento de explorar {web} y noté algunos detalles de fricción en el checkout que seguramente estén interfiriendo en el flujo de ventas.\n"
+        f"¿Podrá interesarte, sin compromiso, un pantallazo rápido con un par de ideas para corregirlo? No dudes en responderme y te lo envío.\n\n"
+        "Devolvé únicamente el correo listo para enviar con esos datos:"
     )
 
     response = client.chat.completions.create(
-        model=config.GROQ_MODEL,  # <-- Usando la variable centralizada del config.py
+        model=config.GROQ_MODEL,  # Carga el modelo configurado en config.py
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ],
-        temperature=0.7,
-        max_tokens=400
+        temperature=0.2,  # Bien obediente para que respete el molde
+        max_tokens=200
     )
     return response.choices[0].message.content.strip()
 
@@ -75,7 +77,6 @@ def ejecutar_campana():
     print("--- Iniciando barrido de prospectos ---")
     enviados = cargar_historial()
     
-    # Detectar automáticamente el archivo CSV disponible
     archivo_prospectos = None
     for posible in ["prospectos_storecheck.csv", "prospectos.csv", "campana_emails_li.csv"]:
         if os.path.exists(posible):
@@ -89,7 +90,6 @@ def ejecutar_campana():
     with open(archivo_prospectos, mode="r", encoding="utf-8") as f:
         reader = csv.DictReader(f)
         
-        # Mapeo flexible para tolerar 'mail' o 'email'
         if reader.fieldnames:
             fieldnames_lower = [fn.lower() for fn in reader.fieldnames]
             email_col = 'email' if 'email' in fieldnames_lower else ('mail' if 'mail' in fieldnames_lower else None)
@@ -102,7 +102,6 @@ def ejecutar_campana():
 
         count = 0
         for row in reader:
-            # Normalizar claves del diccionario a minúsculas
             row_lower = {k.lower(): v for k, v in row.items()}
             email = row_lower.get(email_col, "").strip()
             nombre = row_lower.get("nombre", row_lower.get("name", "emprendedor"))
@@ -112,21 +111,25 @@ def ejecutar_campana():
             if not email or email in enviados:
                 continue
 
-            print(f"Generando correo personalizado para {nombre} ({email})...")
+            print(f"\nGenerando correo para {nombre} ({email})...")
             cuerpo = generar_correo(nombre, web, pais)
             
-            asunto = f"consulta sobre optimización en {web}"
+            # Muestra el cuerpo generado en la terminal en tiempo real
+            print("\n" + "="*40)
+            print(cuerpo)
+            print("="*40 + "\n")
+            
+            asunto = f"consulta sobre {web}"
             
             if enviar_email(email, asunto, cuerpo):
                 registrar_enviado(email)
                 print(f"-> ¡Correo enviado con éxito a {email}!")
                 count += 1
-                # Pausa para cuidar la entrega y evitar bloqueos
                 time.sleep(5)
             else:
                 print(f"-> Falló el envío a {email}")
 
-    print(f"--- Campaña finalizada. Total correos enviados en esta tanda: {count} ---")
+    print(f"\n--- Campaña finalizada. Total correos enviados: {count} ---")
 
 if __name__ == "__main__":
     ejecutar_campana()

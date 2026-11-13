@@ -1,188 +1,126 @@
 import os
-import csv
-import json
-import time
-import unicodedata
+import pandas as pd
+from groq import Groq
 import smtplib
-from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from groq import Groq
+import config  # Importa las credenciales desde config.py
 
-# Importamos las credenciales desde el archivo local privado (config.py)
-try:
-    from config import GMAIL_USER, GMAIL_APP_PASSWORD, GROQ_API_KEY
-except ImportError:
-    GMAIL_USER = os.getenv("GMAIL_USER", "storecheckai@gmail.com")
-    GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
-    GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+# 1. Configuración de clientes
+client = Groq(api_key=config.GROQ_API_KEY)
 
-groq_client = Groq(api_key=GROQ_API_KEY)
+PROSPECTOS_FILE = "prospectos_storecheck.csv"
+HISTORIAL_FILE = "historial_invitaciones_globales.csv"
 
-ARCHIVO_PROSPECTOS = "prospectos_storecheck.csv"
-ARCHIVO_HISTORIAL = "historial_invitaciones_globales.csv"
-COLUMNAS_HISTORIAL = ["Fecha", "Email", "Web", "Contacto", "Pais", "Estado"]
-
-def normalizar_texto(texto):
-    if not texto:
-        return ""
-    return ''.join(c for c in unicodedata.normalize('NFD', str(texto)) if unicodedata.category(c) != 'Mn').lower().strip()
-
-def obtener_idioma_por_pais(pais):
-    p = normalizar_texto(pais)
-    if any(k in p for k in ["argentina", "mexico", "espana", "colombia", "chile", "peru", "uruguay", "ecuador", "panama", "costa rica", "guatemala"]):
-        return "Español"
-    elif any(k in p for k in ["brasil", "brazil", "portugal"]):
-        return "Portugués"
-    elif any(k in p for k in ["francia", "france", "belgica", "belgium"]):
-        return "Francés"
-    elif any(k in p for k in ["italia", "italy"]):
-        return "Italiano"
-    elif any(k in p for k in ["alemania", "germany", "austria", "suiza", "switzerland"]):
-        return "Alemán"
+def cargar_historial():
+    """Carga el historial de correos enviados para evitar duplicados."""
+    if os.path.exists(HISTORIAL_FILE):
+        return pd.read_csv(HISTORIAL_FILE)
     else:
-        return "Inglés"
+        return pd.DataFrame(columns=["nombre", "email", "web", "pais", "estado", "fecha"])
 
-def cargar_emails_enviados():
-    enviados = set()
-    if os.path.exists(ARCHIVO_HISTORIAL):
-        with open(ARCHIVO_HISTORIAL, mode="r", encoding="utf-8-sig") as f:
-            reader = csv.DictReader(f)
-            for fila in reader:
-                email = fila.get("Email", "").strip().lower()
-                if email:
-                    enviados.add(email)
-    return enviados
+def guardar_en_historial(nombre, email, web, pais, estado):
+    """Registra el envío exitoso en el archivo CSV de historial."""
+    df_hist = cargar_historial()
+    nuevo_registro = pd.DataFrame([{
+        "nombre": nombre,
+        "email": email,
+        "web": web,
+        "pais": pais,
+        "estado": estado,
+        "fecha": pd.Timestamp.now().strftime("%Y-%m-%d %H:%M:%S")
+    }])
+    df_hist = pd.concat([df_hist, nuevo_registro], ignore_index=True)
+    df_hist.to_csv(HISTORIAL_FILE, index=False)
 
-def obtener_valor_columna(fila, posibles_nombres, default=""):
-    for k, v in fila.items():
-        if normalizar_texto(k) in posibles_nombres and v and str(v).strip():
-            return str(v).strip()
-    return default
+def generar_correo(nombre, web, pais):
+    """Genera el mensaje ultra natural mediante la IA de Groq."""
+    system_prompt = (
+        "Sos un desarrollador y consultor técnico independiente especializado en optimización web. "
+        "Tu objetivo es escribir un correo en frío ultra corto, directo y conversacional a otro dueño de negocio o colega digital. "
+        "El tono tiene que ser relajado, de par a par, como si le escribieras a alguien que conociste en un foro o comunidad tech. "
+        "REGLAS ESTRICTAS DE REDACCIÓN:\n"
+        "1. Cero lenguaje de marketing agresivo o corporativo (nada de 'aumenta tus ventas 300%', 'exclusivo', 'gratis', 'urgente' ni signos de exclamación excesivos).\n"
+        "2. No uses formato de plantilla obvia. El correo debe arrancar saludando por el nombre y mencionando al pasar la web de su tienda.\n"
+        "3. Sé breve: máximo 3 párrafos cortos.\n"
+        "4. Cerrá con una pregunta simple y abierta, sin links largos ni llamadas a la acción pesadas.\n"
+        "5. Escribilo en el idioma correspondiente según el país del prospecto (español natural y cercano para España/Latinoamérica)."
+    )
 
-def redactar_invitacion_inteligente(nombre, web, pais):
-    idioma = obtener_idioma_por_pais(pais)
-    saludo_nombre = nombre if nombre and nombre.lower() not in ["equipo", "team", ""] else "equipo"
+    user_prompt = f"""
+    Redactá un correo en frío para:
+    - Nombre: {nombre}
+    - Tienda/Web: {web}
+    - País: {pais}
 
-    prompt = f"""
-    Eres un consultor experto en optimización de conversión (CRO) de tiendas online.
-    Redacta un correo de primer contacto B2B muy breve, directo y amable dirigido a {saludo_nombre} de la tienda {web}.
-    
-    Requisitos estrictos:
-    1. Idioma: Redacta TODO (asunto y cuerpo) en {idioma} natural y profesional.
-    2. Tono: Cálido, directo y de colega a colega, sin sonar a vendedor agresivo ni usar palabras spam.
-    3. Contenido: Saluda a {saludo_nombre}, comenta que exploraste {web} y observaste algunos detalles que podrían estar afectando el flujo de ventas. Pregunta si le interesa recibir un reporte rápido y sin costo con algunos puntos concretos a mejorar.
-    4. Longitud: Máximo 45 palabras en el cuerpo.
-    5. Formato de salida: Devuelve ÚNICAMENTE un JSON válido con las claves "asunto" y "cuerpo". Sin texto adicional.
+    El enfoque debe ser que chusmeaste su tienda de pasada, notaste un par de detalles finos de fricción o velocidad que se podrían pulir, y le tirás la onda de charlarlo si le interesa.
     """
 
-    modelos = [
-        "qwen/qwen3.8-27b",
-        "allam-2-7b"
-    ]
+    response = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt}
+        ],
+        temperature=0.7,
+        max_tokens=400
+    )
+    return response.choices[0].message.content.strip()
 
-    last_error = None
-    for modelo in modelos:
-        try:
-            chat_completion = groq_client.chat.completions.create(
-                messages=[{"role": "user", "content": prompt}],
-                model=modelo,
-                temperature=0.6,
-                response_format={"type": "json_object"}
-            )
-            return json.loads(chat_completion.choices[0].message.content)
-        except Exception as e:
-            last_error = e
-            continue
+def enviar_email(destinatario, cuerpo_texto, nombre_tienda):
+    """Envía el correo mediante el servidor SMTP seguro de Gmail."""
+    remitente = config.GMAIL_USER
+    password = config.GMAIL_APP_PASSWORD
 
-    raise Exception(f"No se pudo conectar con ningún modelo de Groq: {last_error}")
+    msg = MIMEMultipart()
+    msg['From'] = remitente
+    msg['To'] = destinatario
+    msg['Subject'] = f"Consulta rápida sobre {nombre_tienda}"
 
-def enviar_correo_smtp(destinatario, asunto, cuerpo):
-    """Envía el correo mediante el servidor SMTP oficial de Gmail usando TLS."""
+    msg.attach(MIMEText(cuerpo_texto, 'plain'))
+
     try:
-        msg = MIMEMultipart()
-        msg['From'] = GMAIL_USER
-        msg['To'] = destinatario
-        msg['Subject'] = asunto
-        msg.attach(MIMEText(cuerpo, 'plain', 'utf-8'))
-        
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
-        server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-        server.sendmail(GMAIL_USER, destinatario, msg.as_string())
-        server.quit()
+        with smtplib.SMTP_SSL('smtp.gmail.com', 465) as server:
+            server.login(remitente, password)
+            server.sendmail(remitente, destinatario, msg.as_string())
         return True
     except Exception as e:
-        print(f"[-] Error al enviar correo por SMTP a {destinatario}: {e}")
+        print(f"Error al enviar correo a {destinatario}: {e}")
         return False
 
-def procesar_lote():
-    if not os.path.exists(ARCHIVO_PROSPECTOS):
-        print(f"❌ No se encontró el archivo '{ARCHIVO_PROSPECTOS}'.")
+def ejecutar_campaña():
+    """Procesa la lista de prospectos y ejecuta los envíos pendientes."""
+    if not os.path.exists(PROSPECTOS_FILE):
+        print(f"No se encontró el archivo {PROSPECTOS_FILE}")
         return
 
-    emails_enviados = cargar_emails_enviados()
+    df_prospectos = pd.read_csv(PROSPECTOS_FILE)
+    historial = cargar_historial()
+    enviados_set = set(historial['email'].values) if not historial.empty else set()
 
-    with open(ARCHIVO_PROSPECTOS, mode="r", encoding="utf-8-sig") as f:
-        reader = csv.DictReader(f)
-        prospectos = list(reader)
+    print(f"--- Iniciando barrido de prospectos ({len(df_prospectos)} encontrados) ---")
 
-    print(f"📂 Leyendo {len(prospectos)} prospectos desde '{ARCHIVO_PROSPECTOS}'...\n")
+    for index, row in df_prospectos.iterrows():
+        nombre = row['nombre']
+        email = row['email']
+        web = row['web']
+        pais = row['pais']
 
-    archivo_nuevo = not os.path.exists(ARCHIVO_HISTORIAL) or os.path.getsize(ARCHIVO_HISTORIAL) == 0
-    nuevas_invitaciones = 0
+        if email in enviados_set:
+            print(f"-> Saltando {email} (ya figura en el historial).")
+            continue
 
-    with open(ARCHIVO_HISTORIAL, mode="a", newline="", encoding="utf-8-sig") as f_hist:
-        writer = csv.DictWriter(f_hist, fieldnames=COLUMNAS_HISTORIAL)
-        if archivo_nuevo:
-            writer.writeheader()
+        print(f"Generando correo personalizado para {nombre} ({email})...")
+        cuerpo = generar_correo(nombre, web, pais)
 
-        for fila in prospectos:
-            email = obtener_valor_columna(fila, ["email", "correo", "mail", "e-mail"]).lower()
-            web = obtener_valor_columna(fila, ["web", "website", "url", "dominio", "tienda", "domain"])
-            nombre = obtener_valor_columna(fila, ["contacto", "nombre", "name", "first name", "persona"], "Equipo")
-            pais = obtener_valor_columna(fila, ["pais", "country", "ubicacion", "location", "sede"], "Estados Unidos")
+        print(f"Enviando correo vía SMTP...")
+        exito = enviar_email(email, cuerpo, web)
 
-            if not email or not web:
-                continue
-
-            if email in emails_enviados:
-                continue
-
-            print(f"📍 País sede: {pais} | Web: {web} | Contacto: {nombre}")
-            try:
-                ia = redactar_invitacion_inteligente(nombre, web, pais)
-                asunto = ia.get("asunto", f"Una consulta sobre {web}")
-                cuerpo = ia.get("cuerpo", "")
-
-                print(f"👤 Idioma: {obtener_idioma_por_pais(pais)} | Asunto: {asunto}")
-                print(f"✉️ Mensaje:\n{cuerpo}\n")
-
-                exito = enviar_correo_smtp(email, asunto, cuerpo)
-
-                if exito:
-                    writer.writerow({
-                        "Fecha": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                        "Email": email,
-                        "Web": web,
-                        "Contacto": nombre,
-                        "Pais": pais,
-                        "Estado": "Invitacion enviada"
-                    })
-                    f_hist.flush()
-
-                    emails_enviados.add(email)
-                    nuevas_invitaciones += 1
-                    print(f"✅ Registrado con éxito en el historial.\n")
-                else:
-                    print(f"❌ Falló el envío SMTP a {email}.\n")
-
-                time.sleep(1.5)
-
-            except Exception as e:
-                print(f"❌ Error procesando {email}: {e}\n")
-
-    print(f"✅ Proceso finalizado. Se prepararon {nuevas_invitaciones} invitaciones nuevas.")
+        if exito:
+            guardar_en_historial(nombre, email, web, pais, "Invitacion enviada")
+            print(f"¡Enviado con éxito a {email}!\n")
+        else:
+            print(f"Falló el envío a {email}.\n")
 
 if __name__ == "__main__":
-    procesar_lote()
+    ejecutar_campaña()

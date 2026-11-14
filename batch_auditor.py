@@ -26,14 +26,17 @@ def cargar_historial():
     return enviados
 
 def registrar_enviado(nombre, email, web, pais, asunto):
+    print(f"DEBUG: Intentando abrir/crear {HISTORIAL_FILE}...")
     file_exists = os.path.exists(HISTORIAL_FILE) and os.path.getsize(HISTORIAL_FILE) > 0
     with open(HISTORIAL_FILE, mode="a", encoding="utf-8-sig", newline="") as f:
         writer = csv.writer(f)
         if not file_exists:
+            print("DEBUG: El archivo estaba vacío, escribiendo cabecera...")
             writer.writerow(["fecha", "nombre", "email", "web", "pais", "idioma", "asunto", "estado"])
         
         fecha_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         writer.writerow([fecha_actual, nombre, email, web, pais, "Español", asunto, "Invitacion enviada"])
+    print(f"DEBUG: ¡Escritura completada con éxito en {HISTORIAL_FILE}!")
 
 def generar_correo(nombre, web, pais):
     system_prompt = (
@@ -48,7 +51,8 @@ def generar_correo(nombre, web, pais):
         f"Hola, {nombre}, ¿cómo estás?\n"
         f"Me tomé el atrevimiento de explorar {web} y noté algunos detalles de fricción en el checkout que seguramente estén interfiriendo en el flujo de ventas.\n"
         f"¿Podrá interesarte, sin compromiso, un pantallazo rápido con un par de ideas para corregirlo?\n" 
-        f"No dudes en responderme y te lo envío.\n\n"
+        f"No dudes en responderme y te lo envío con gusto.\n"
+        f"¡Que tengas un gran día!\n"
         "Devolvé únicamente el correo listo para enviar con esos datos:"
     )
 

@@ -4,6 +4,7 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import time
+from datetime import datetime
 from groq import Groq
 import config
 
@@ -15,17 +16,24 @@ HISTORIAL_FILE = "historial_invitaciones_globales.csv"
 def cargar_historial():
     enviados = set()
     if os.path.exists(HISTORIAL_FILE):
-        with open(HISTORIAL_FILE, mode="r", encoding="utf-8") as f:
+        with open(HISTORIAL_FILE, mode="r", encoding="utf-8-sig") as f:
             reader = csv.reader(f)
             for row in reader:
                 if row:
-                    enviados.add(row[0].strip().lower())
+                    for campo in row:
+                        if "@" in campo and "." in campo:
+                            enviados.add(campo.strip().lower())
     return enviados
 
-def registrar_enviado(email):
-    with open(HISTORIAL_FILE, mode="a", encoding="utf-8", newline="") as f:
+def registrar_enviado(nombre, email, web, pais, asunto):
+    file_exists = os.path.exists(HISTORIAL_FILE) and os.path.getsize(HISTORIAL_FILE) > 0
+    with open(HISTORIAL_FILE, mode="a", encoding="utf-8-sig", newline="") as f:
         writer = csv.writer(f)
-        writer.writerow([email])
+        if not file_exists:
+            writer.writerow(["fecha", "nombre", "email", "web", "pais", "idioma", "asunto", "estado"])
+        
+        fecha_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        writer.writerow([fecha_actual, nombre, email, web, pais, "Español", asunto, "Invitacion enviada"])
 
 def generar_correo(nombre, web, pais):
     system_prompt = (
@@ -36,7 +44,7 @@ def generar_correo(nombre, web, pais):
     )
     
     user_prompt = (
-        f"Tomá como base este texto exacto y adaptalo para {nombre} que está a cargo de {web} (ubicado en {pais}):\n\n"
+        f"Tomá como base este texto exacto y adaptalo completo para {nombre} que está a cargo de {web} (ubicado en {pais}):\n\n"
         f"Hola, {nombre}, ¿cómo estás?\n"
         f"Me tomé el atrevimiento de explorar {web} y noté algunos detalles de fricción en el checkout que seguramente estén interfiriendo en el flujo de ventas.\n"
         f"¿Podrá interesarte, sin compromiso, un pantallazo rápido con un par de ideas para corregirlo?\n" 
@@ -51,7 +59,7 @@ def generar_correo(nombre, web, pais):
             {"role": "user", "content": user_prompt}
         ],
         temperature=0.2,  # Bien obediente para que respete el molde
-        max_tokens=300
+        max_tokens=300    # Margen amplio para que no corte el mensaje
     )
     return response.choices[0].message.content.strip()
 
@@ -79,7 +87,7 @@ def ejecutar_campana():
     enviados = cargar_historial()
     
     archivo_prospectos = None
-    for posible in ["prospectos_storecheck.csv", "prospectos.csv", "campana_emails_li.csv"]:
+    for posible in ["prospectos_storecheck.csv", "leads_globales.csv", "prospectos.csv", "campana_emails_li.csv"]:
         if os.path.exists(posible):
             archivo_prospectos = posible
             break
@@ -88,7 +96,9 @@ def ejecutar_campana():
         print("Error: No se encontró ningún archivo CSV de prospectos en la carpeta.")
         return
 
-    with open(archivo_prospectos, mode="r", encoding="utf-8") as f:
+    print(f"📂 Usando archivo de prospectos: {archivo_prospectos}")
+
+    with open(archivo_prospectos, mode="r", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         
         if reader.fieldnames:
@@ -123,8 +133,9 @@ def ejecutar_campana():
             asunto = f"consulta sobre {web}"
             
             if enviar_email(email, asunto, cuerpo):
-                registrar_enviado(email)
-                print(f"-> ¡Correo enviado con éxito a {email}!")
+                registrar_enviado(nombre, email, web, pais, asunto)
+                enviados.add(email.lower()) # Sumar al set local para evitar duplicados en la misma corrida
+                print(f"-> ¡Correo enviado con éxito a {email} y registrado en el historial!")
                 count += 1
                 time.sleep(5)
             else:

@@ -38,8 +38,9 @@ def generar_correo(nombre, web, pais):
     user_prompt = (
         f"Tomá como base este texto exacto y adaptalo para {nombre} que está a cargo de {web} (ubicado en {pais}):\n\n"
         f"Hola, {nombre}, ¿cómo estás?\n"
-        f"Mirá, me tomé el atrevimiento de explorar {web} y noté algunos detalles de fricción en el checkout que seguramente estén interfiriendo en el flujo de ventas.\n"
-        f"¿Podrá interesarte, sin compromiso, un pantallazo rápido con un par de ideas para corregirlo? No dudes en responderme y te lo envío.\n\n"
+        f"Me tomé el atrevimiento de explorar {web} y noté algunos detalles de fricción en el checkout que seguramente estén interfiriendo en el flujo de ventas.\n"
+        f"¿Podrá interesarte, sin compromiso, un pantallazo rápido con un par de ideas para corregirlo?\n" 
+        f"No dudes en responderme y te lo envío.\n\n"
         "Devolvé únicamente el correo listo para enviar con esos datos:"
     )
 
@@ -50,7 +51,7 @@ def generar_correo(nombre, web, pais):
             {"role": "user", "content": user_prompt}
         ],
         temperature=0.2,  # Bien obediente para que respete el molde
-        max_tokens=200
+        max_tokens=300
     )
     return response.choices[0].message.content.strip()
 

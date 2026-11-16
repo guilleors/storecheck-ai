@@ -168,7 +168,7 @@ def generar_y_enviar_teaser(nombre, email_dest, web, pais, asunto_original):
     - Usá doble salto de línea (párrafos bien separados) entre cada idea para que sea muy fácil y cómodo de leer.
     - Estructurá el correo exactamente así:
 
-    Párrafo 1: Saludo breve agradeciendo la respuesta (ej: "¡Hola {saludo}! Gracias por responder. Estuve revisando {web} y te paso 3 puntos concretos que vi:").
+    Párrafo 1: Saludo breve agradeciendo la respuesta (ej: "¡Hola {saludo}! Gracias por responder. Dale, te paso 3 puntos concretos que vi:").
 
     [Línea en blanco]
 

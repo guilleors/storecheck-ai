@@ -257,7 +257,6 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
     story.append(Paragraph(intro_fixed_text, body_style))
     story.append(Spacer(1, 10))
 
-    # Limpieza de saludos y bloques repetidos
     blocks = audit_text.split("\n\n")
     cleaned_blocks = []
     seen_snippets = set()
@@ -368,6 +367,11 @@ try:
     client = get_groq_client()
 except Exception:
     client = None
+
+# --- CAPTURAR URL DESDE EL EMAIL AUTOMÁTICO ---
+query_store = st.query_params.get("store", "")
+if query_store and "store_url_input" not in st.session_state:
+    st.session_state["store_url_input"] = query_store
 
 # --- BARRA LATERAL ---
 ui_language = st.sidebar.selectbox(

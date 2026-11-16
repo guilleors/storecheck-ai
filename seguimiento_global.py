@@ -10,6 +10,8 @@ from datetime import datetime
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+import requests
+from bs4 import BeautifulSoup
 from groq import Groq
 
 # Importamos las credenciales desde el archivo local privado (config.py)
@@ -23,12 +25,15 @@ except ImportError:
 groq_client = Groq(api_key=GROQ_API_KEY)
 
 ARCHIVO_HISTORIAL = "historial_invitaciones_globales.csv"
+STREAMLIT_URL = "https://storecheck-ai.streamlit.app/"
 DIAS_ESPERA = 4
+
 
 def normalizar_texto(texto):
     if not texto:
         return ""
     return ''.join(c for c in unicodedata.normalize('NFD', str(texto)) if unicodedata.category(c) != 'Mn').lower().strip()
+
 
 def get_col(fila, nombre_col, default=""):
     """Busca una columna sin importar mayúsculas/minúsculas."""
@@ -37,6 +42,7 @@ def get_col(fila, nombre_col, default=""):
             return str(v).strip() if v is not None else default
     return default
 
+
 def set_col(fila, nombre_col, valor):
     """Actualiza una columna respetando su nombre original."""
     for k in fila.keys():
@@ -44,6 +50,7 @@ def set_col(fila, nombre_col, valor):
             fila[k] = valor
             return
     fila[nombre_col] = valor
+
 
 def obtener_idioma_por_pais(pais):
     p = normalizar_texto(pais)
@@ -59,6 +66,126 @@ def obtener_idioma_por_pais(pais):
         return "Alemán"
     else:
         return "Inglés"
+
+
+def raspar_tienda_rapido(url):
+    """Extrae datos reales de la tienda del prospecto para armar un teaser preciso."""
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
+            "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
+        }
+        if not url.startswith("http://") and not url.startswith("https://"):
+            url = "https://" + url
+
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code != 200:
+            return None
+
+        soup = BeautifulSoup(resp.text, "html.parser")
+        title = soup.title.string.strip() if soup.title else "Sin título"
+        meta_desc = ""
+        desc_tag = soup.find("meta", attrs={"name": lambda x: x and x.lower() == "description"})
+        if desc_tag:
+            meta_desc = desc_tag.get("content", "").strip()
+
+        html_content = resp.text.lower()
+        platform = "Personalizada / Genérica"
+        if "shopify" in html_content or "cdn.shopify.com" in html_content:
+            platform = "Shopify"
+        elif "woocommerce" in html_content or "wp-content" in html_content:
+            platform = "WooCommerce / WordPress"
+        elif "prestashop" in html_content:
+            platform = "PrestaShop"
+        elif "tiendanube" in html_content or "nuvemshop" in html_content:
+            platform = "Tiendanube"
+
+        has_cart = bool(soup.find_all(class_=lambda x: x and "cart" in x.lower())) or "carrito" in html_content or "bag" in html_content
+        has_checkout = "checkout" in html_content or "finalizar" in html_content or "pagar" in html_content
+
+        gateways = []
+        if "mercadopago" in html_content: gateways.append("MercadoPago")
+        if "paypal" in html_content: gateways.append("PayPal")
+        if "stripe" in html_content: gateways.append("Stripe")
+        if "transferencia" in html_content or "transfer" in html_content: gateways.append("Transferencia Bancaria")
+
+        for script in soup(["script", "style", "nav", "footer"]):
+            script.extract()
+        visible_text = soup.get_text(separator=" ", strip=True)[:1500]
+
+        return {
+            "platform": platform,
+            "title": title,
+            "meta_description": meta_desc,
+            "has_cart": has_cart,
+            "has_checkout": has_checkout,
+            "gateways": gateways if gateways else ["No detectadas explícitamente"],
+            "snippet": visible_text,
+        }
+    except Exception:
+        return None
+
+
+def generar_y_enviar_teaser(nombre, email_dest, web, pais, asunto_original):
+    """Genera el pre-informe personalizado y lo envía por correo con el link a Streamlit."""
+    idioma = obtener_idioma_por_pais(pais)
+    saludo = nombre if nombre and nombre.lower() not in ["equipo", "team", "emprendedor", ""] else "hola"
+
+    print(f"   🔎 Analizando {web} en vivo para armar el pre-informe...")
+    datos_web = raspar_tienda_rapido(web)
+
+    if datos_web:
+        contexto_tecnico = f"""
+        Datos reales extraídos de {web}:
+        - Plataforma: {datos_web['platform']}
+        - Título: {datos_web['title']}
+        - Meta descripción: {datos_web['meta_description']}
+        - Botón carrito detectado: {datos_web['has_cart']}
+        - Flujo checkout detectado: {datos_web['has_checkout']}
+        - Pasarelas de pago: {', '.join(datos_web['gateways'])}
+        - Fragmento visible: {datos_web['snippet'][:900]}
+        """
+    else:
+        contexto_tecnico = f"Tienda analizada: {web} (el servidor bloqueó el scraping directo, enfocate en fricciones habituales de checkout móvil, tiempos de carga y claridad de pasarelas de pago)."
+
+    prompt = f"""
+    Sos un especialista en optimización de conversión (CRO) y Mystery Shopper escribiendo un correo de respuesta a {saludo} ({web}), quien acaba de responder que sí quiere recibir el pantallazo gratuito que le ofreciste.
+
+    {contexto_tecnico}
+
+    Redactá el correo completo en {idioma} natural, cercano y profesional (si es español, usá un tono cercano y directo tipo consultor independiente de Argentina, sin sonar robótico ni corporativo acartonado).
+
+    Estructura obligatoria:
+    1. Saludo breve agradeciendo la respuesta (ej: "¡Genial, {saludo}! Te paso lo que estuve viendo en {web}:").
+    2. 3 puntos concretos y accionables de fricción o mejora que detectaste al simular una compra (usá viñetas cortas, bien al grano).
+    3. Cierre invitándolo a que, si quiere el diagnóstico técnico completo en PDF con la hoja de ruta paso a paso (o los snippets de código listos para aplicar), puede generarlo al instante desde nuestra herramienta acá: {STREAMLIT_URL}
+    4. Despedida amable sin presión.
+
+    Devolvé ÚNICAMENTE el cuerpo del correo listo para enviar (sin asunto ni comillas).
+    """
+
+    try:
+        chat_completion = groq_client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model="llama-3.3-70b-versatile",
+            temperature=0.4,
+            max_tokens=600,
+        )
+        cuerpo_teaser = chat_completion.choices[0].message.content.strip()
+    except Exception:
+        chat_completion = groq_client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model="qwen/qwen3.8-27b",
+            temperature=0.4,
+            max_tokens=600,
+        )
+        cuerpo_teaser = chat_completion.choices[0].message.content.strip()
+
+    asunto_respuesta = asunto_original if asunto_original.lower().startswith("re:") else f"Re: {asunto_original or f'consulta sobre {web}'}"
+
+    print(f"   ✉️ Enviando pre-informe automático a {email_dest}...")
+    return enviar_correo_smtp(email_dest, asunto_respuesta, cuerpo_teaser)
+
 
 def clasificar_respuesta_cliente(texto_respuesta):
     """Usa IA para clasificar la intención del cliente en la respuesta recibida."""
@@ -84,8 +211,9 @@ def clasificar_respuesta_cliente(texto_respuesta):
     except Exception:
         return "Otro"
 
+
 def detectar_respuestas_gmail(filas):
-    """Revisa storecheckai@gmail.com vía IMAP, clasifica la respuesta y actualiza el estado."""
+    """Revisa storecheckai@gmail.com vía IMAP, clasifica la respuesta y dispara el teaser si hay interés."""
     if not GMAIL_APP_PASSWORD:
         print("⚠️ No se detectó GMAIL_APP_PASSWORD. Se omite el chequeo automático de bandeja.\n")
         return 0
@@ -114,7 +242,7 @@ def detectar_respuestas_gmail(filas):
                 _, msg_data = mail.fetch(msg_ids[-1], "(RFC822)")
                 raw_email = msg_data[0][1]
                 msg = email.message_from_bytes(raw_email)
-                
+
                 fecha_mail_str = msg.get("Date")
                 fecha_envio_str = get_col(fila, "fecha")[:10]
 
@@ -140,8 +268,20 @@ def detectar_respuestas_gmail(filas):
                     intencion = clasificar_respuesta_cliente(cuerpo_cliente)
 
                     if intencion == "Interesado":
-                        set_col(fila, "estado", "Interesado - Enviar Reporte")
-                        print(f"🔥 ¡Interés detectado de {email_prospecto}! Estado: Interesado - Enviar Reporte")
+                        print(f"🔥 ¡Interés detectado de {email_prospecto}! Generando y enviando pre-informe...")
+                        nombre = get_col(fila, "nombre")
+                        web = get_col(fila, "web")
+                        pais = get_col(fila, "pais", "Argentina")
+                        asunto = get_col(fila, "asunto")
+
+                        if generar_y_enviar_teaser(nombre, email_prospecto, web, pais, asunto):
+                            set_col(fila, "estado", "Teaser enviado")
+                            set_col(fila, "fecha", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                            print(f"🚀 ¡Pre-informe enviado con éxito a {email_prospecto}! Estado: Teaser enviado")
+                        else:
+                            set_col(fila, "estado", "Interesado - Error envio teaser")
+                            print(f"⚠️ Hubo interés de {email_prospecto}, pero falló el envío del teaser.")
+
                     elif intencion == "No interesado":
                         set_col(fila, "estado", "No interesado")
                         print(f"❌ {email_prospecto} desestimó la oferta. Estado: No interesado")
@@ -158,6 +298,7 @@ def detectar_respuestas_gmail(filas):
     print(f"📊 Chequeo de bandeja finalizado: {marcados} respuestas procesadas.\n")
     return marcados
 
+
 def enviar_correo_smtp(destinatario, asunto, cuerpo):
     """Envía el correo mediante el servidor SMTP oficial de Gmail usando TLS."""
     try:
@@ -166,7 +307,7 @@ def enviar_correo_smtp(destinatario, asunto, cuerpo):
         msg['To'] = destinatario
         msg['Subject'] = asunto
         msg.attach(MIMEText(cuerpo, 'plain', 'utf-8'))
-        
+
         server = smtplib.SMTP('smtp.gmail.com', 587)
         server.starttls()
         server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
@@ -176,6 +317,7 @@ def enviar_correo_smtp(destinatario, asunto, cuerpo):
     except Exception as e:
         print(f"[-] Error al enviar correo por SMTP a {destinatario}: {e}")
         return False
+
 
 def redactar_seguimiento_inteligente(nombre, web, pais):
     idioma = obtener_idioma_por_pais(pais)
@@ -214,6 +356,7 @@ def redactar_seguimiento_inteligente(nombre, web, pais):
             continue
 
     raise Exception(f"No se pudo conectar con ningún modelo de Groq: {last_error}")
+
 
 def ejecutar_seguimientos():
     if not os.path.exists(ARCHIVO_HISTORIAL):
@@ -288,6 +431,7 @@ def ejecutar_seguimientos():
         print(f"✅ Historial actualizado ({respuestas_nuevas} respuestas procesadas, {seguimientos_enviados} seguimientos enviados).")
     else:
         print("✅ Proceso finalizado. Sin novedades ni seguimientos pendientes por hoy.")
+
 
 if __name__ == "__main__":
     ejecutar_seguimientos()

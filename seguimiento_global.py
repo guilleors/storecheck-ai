@@ -173,11 +173,11 @@ def generar_y_enviar_teaser(nombre, email_dest, web, pais, asunto_original):
 
     [Línea en blanco]
 
-    Párrafo de cierre: Invitalo sin presión a que, si quiere el informe técnico completo en PDF con la guía paso a paso (o los snippets de código listos para aplicar en {datos_web['platform']}), puede generarlo al instante desde acá: {STREAMLIT_URL}
+    Párrafo de cierre: Invitalo sin presión a que, si quiere el informe técnico completo en PDF por $19 USD con la guía paso a paso (o los snippets de código listos para aplicar en {datos_web['platform']}), puede generarlo al instante desde acá: {STREAMLIT_URL}
 
     [Línea en blanco]
 
-    Despedida breve en una sola línea.
+    Despedida breve en una sola línea (SIN NINGUNA COMA AL FINAL, por ejemplo: escribí exactamente "Un saludo" o "Abrazo" sin signos de puntuación finales).
 
     Devolvé ÚNICAMENTE el cuerpo del correo listo para enviar (sin asunto ni comillas).
     """

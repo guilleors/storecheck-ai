@@ -127,39 +127,57 @@ def raspar_tienda_rapido(url):
 
 
 def generar_y_enviar_teaser(nombre, email_dest, web, pais, asunto_original):
-    """Genera el pre-informe personalizado y lo envía por correo con el link a Streamlit."""
+    """Genera el pre-informe SOLO si logra extraer datos reales de la tienda. Nunca inventa."""
     idioma = obtener_idioma_por_pais(pais)
     saludo = nombre if nombre and nombre.lower() not in ["equipo", "team", "emprendedor", ""] else "hola"
 
     print(f"   🔎 Analizando {web} en vivo para armar el pre-informe...")
     datos_web = raspar_tienda_rapido(web)
 
-    if datos_web:
-        contexto_tecnico = f"""
-        Datos reales extraídos de {web}:
-        - Plataforma: {datos_web['platform']}
-        - Título: {datos_web['title']}
-        - Meta descripción: {datos_web['meta_description']}
-        - Botón carrito detectado: {datos_web['has_cart']}
-        - Flujo checkout detectado: {datos_web['has_checkout']}
-        - Pasarelas de pago: {', '.join(datos_web['gateways'])}
-        - Fragmento visible: {datos_web['snippet'][:900]}
-        """
-    else:
-        contexto_tecnico = f"Tienda analizada: {web} (el servidor bloqueó el scraping directo, enfocate en fricciones habituales de checkout móvil, tiempos de carga y claridad de pasarelas de pago)."
+    # FRENO DE SEGURIDAD: Si no se pudo leer la web real, NO se envía nada para evitar inventar datos
+    if not datos_web:
+        print(f"   🛑 ALERTA: No se pudo acceder a {web} (no existe, está caída o bloquea bots).")
+        print("   🛑 Envío cancelado automáticamente para no inventar información.")
+        return "WEB_INACCESIBLE"
+
+    contexto_tecnico = f"""
+    Datos reales extraídos del código HTML de {web}:
+    - Plataforma detectada: {datos_web['platform']}
+    - Título de la página: {datos_web['title']}
+    - Meta descripción: {datos_web['meta_description'] or 'No tiene meta descripción configurada'}
+    - Botón de carrito detectado en la home: {'Sí' if datos_web['has_cart'] else 'No detectado'}
+    - Flujo/enlace de checkout detectado: {'Sí' if datos_web['has_checkout'] else 'No detectado'}
+    - Pasarelas de pago visibles: {', '.join(datos_web['gateways'])}
+    - Fragmento de texto visible en la tienda: {datos_web['snippet'][:900]}
+    """
 
     prompt = f"""
-    Sos un especialista en optimización de conversión (CRO) y Mystery Shopper escribiendo un correo de respuesta a {saludo} ({web}), quien acaba de responder que sí quiere recibir el pantallazo gratuito que le ofreciste.
+    Sos un especialista en optimización de conversión (CRO) escribiendo un correo de respuesta a {saludo} ({web}), quien pidió recibir el pantallazo gratuito que le ofreciste.
 
     {contexto_tecnico}
 
-    Redactá el correo completo en {idioma} natural, cercano y profesional (si es español, usá un tono cercano y directo tipo consultor independiente de Argentina, sin sonar robótico ni corporativo acartonado).
+    REGLAS ESTRICTAS DE VERACIDAD:
+    - Basate ÚNICAMENTE en los datos reales extraídos arriba.
+    - NO inventes problemas ni supongas cosas que no surjan de esos datos. Si un dato aparece como "No detectado" o vacío, señalalo como una oportunidad concreta de mejora.
 
-    Estructura obligatoria:
-    1. Saludo breve agradeciendo la respuesta (ej: "¡Genial, {saludo}! Te paso lo que estuve viendo en {web}:").
-    2. 3 puntos concretos y accionables de fricción o mejora que detectaste al simular una compra (usá viñetas cortas, bien al grano).
-    3. Cierre invitándolo a que, si quiere el diagnóstico técnico completo en PDF con la hoja de ruta paso a paso (o los snippets de código listos para aplicar), puede generarlo al instante desde nuestra herramienta acá: {STREAMLIT_URL}
-    4. Despedida amable sin presión.
+    REGLAS ESTRICTAS DE FORMATO Y LEGIBILIDAD:
+    - Redactá en {idioma} natural, cercano y profesional (tono directo de colega, sin sonar robótico).
+    - Usá doble salto de línea (párrafos bien separados) entre cada idea para que sea muy fácil y cómodo de leer.
+    - Estructurá el correo exactamente así:
+
+    Párrafo 1: Saludo breve agradeciendo la respuesta (ej: "¡Hola {saludo}! Gracias por responder. Estuve revisando {web} y te paso 3 puntos concretos que vi:").
+
+    [Línea en blanco]
+
+    Lista con 3 viñetas (usando "• ") separadas entre sí por una línea en blanco. Cada viñeta debe tener un título corto seguido de dos puntos y una explicación de máximo 2 líneas basada en los datos reales.
+
+    [Línea en blanco]
+
+    Párrafo de cierre: Invitalo sin presión a que, si quiere el informe técnico completo en PDF con la guía paso a paso (o los snippets de código listos para aplicar en {datos_web['platform']}), puede generarlo al instante desde acá: {STREAMLIT_URL}
+
+    [Línea en blanco]
+
+    Despedida breve en una sola línea.
 
     Devolvé ÚNICAMENTE el cuerpo del correo listo para enviar (sin asunto ni comillas).
     """
@@ -168,23 +186,24 @@ def generar_y_enviar_teaser(nombre, email_dest, web, pais, asunto_original):
         chat_completion = groq_client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
             model="llama-3.3-70b-versatile",
-            temperature=0.4,
-            max_tokens=600,
+            temperature=0.2,
+            max_tokens=650,
         )
         cuerpo_teaser = chat_completion.choices[0].message.content.strip()
     except Exception:
         chat_completion = groq_client.chat.completions.create(
             messages=[{"role": "user", "content": prompt}],
             model="qwen/qwen3.8-27b",
-            temperature=0.4,
-            max_tokens=600,
+            temperature=0.2,
+            max_tokens=650,
         )
         cuerpo_teaser = chat_completion.choices[0].message.content.strip()
 
     asunto_respuesta = asunto_original if asunto_original.lower().startswith("re:") else f"Re: {asunto_original or f'consulta sobre {web}'}"
 
-    print(f"   ✉️ Enviando pre-informe automático a {email_dest}...")
-    return enviar_correo_smtp(email_dest, asunto_respuesta, cuerpo_teaser)
+    print(f"   ✉️ Enviando pre-informe real y formateado a {email_dest}...")
+    exito = enviar_correo_smtp(email_dest, asunto_respuesta, cuerpo_teaser)
+    return "ENVIADO" if exito else "ERROR_SMTP"
 
 
 def clasificar_respuesta_cliente(texto_respuesta):
@@ -268,19 +287,24 @@ def detectar_respuestas_gmail(filas):
                     intencion = clasificar_respuesta_cliente(cuerpo_cliente)
 
                     if intencion == "Interesado":
-                        print(f"🔥 ¡Interés detectado de {email_prospecto}! Generando y enviando pre-informe...")
+                        print(f"🔥 ¡Interés detectado de {email_prospecto}! Verificando tienda real...")
                         nombre = get_col(fila, "nombre")
                         web = get_col(fila, "web")
                         pais = get_col(fila, "pais", "Argentina")
                         asunto = get_col(fila, "asunto")
 
-                        if generar_y_enviar_teaser(nombre, email_prospecto, web, pais, asunto):
+                        resultado_teaser = generar_y_enviar_teaser(nombre, email_prospecto, web, pais, asunto)
+
+                        if resultado_teaser == "ENVIADO":
                             set_col(fila, "estado", "Teaser enviado")
                             set_col(fila, "fecha", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
                             print(f"🚀 ¡Pre-informe enviado con éxito a {email_prospecto}! Estado: Teaser enviado")
+                        elif resultado_teaser == "WEB_INACCESIBLE":
+                            set_col(fila, "estado", "Interesado - Revisar web manual")
+                            print(f"⚠️ {email_prospecto} está interesado, pero {web} no respondió. Queda marcado para revisión manual.")
                         else:
                             set_col(fila, "estado", "Interesado - Error envio teaser")
-                            print(f"⚠️ Hubo interés de {email_prospecto}, pero falló el envío del teaser.")
+                            print(f"⚠️ Hubo interés de {email_prospecto}, pero falló el envío SMTP.")
 
                     elif intencion == "No interesado":
                         set_col(fila, "estado", "No interesado")

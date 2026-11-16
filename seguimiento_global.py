@@ -151,6 +151,9 @@ def generar_y_enviar_teaser(nombre, email_dest, web, pais, asunto_original):
     - Fragmento de texto visible en la tienda: {datos_web['snippet'][:900]}
     """
 
+    # Link inteligente con la tienda precargada en Streamlit
+    link_con_tienda = f"{STREAMLIT_URL}?store={web}"
+
     prompt = f"""
     Sos un especialista en optimización de conversión (CRO) escribiendo un correo de respuesta a {saludo} ({web}), quien pidió recibir el pantallazo gratuito que le ofreciste.
 
@@ -173,11 +176,11 @@ def generar_y_enviar_teaser(nombre, email_dest, web, pais, asunto_original):
 
     [Línea en blanco]
 
-    Párrafo de cierre: Invitalo sin presión a que, si quiere el informe técnico completo en PDF por $19 USD con la guía paso a paso (o los snippets de código listos para aplicar en {datos_web['platform']}), puede generarlo al instante desde acá: {STREAMLIT_URL}
+    Párrafo de cierre: Invitalo sin presión a que, si quiere el informe técnico completo en PDF por $19 USD con la guía paso a paso (o los snippets de código listos para aplicar en {datos_web['platform']}), puede generarlo al instante haciendo clic acá: {link_con_tienda}
 
     [Línea en blanco]
 
-    Despedida breve en una sola línea (SIN NINGUNA COMA AL FINAL, por ejemplo: escribí exactamente "Un saludo" o "Abrazo" sin signos de puntuación finales).
+    Despedida breve en una sola línea (SIN NINGUNA COMA AL FINAL, por ejemplo escribí exactamente "Un saludo" o "Abrazo" sin signos de puntuación finales).
 
     Devolvé ÚNICAMENTE el cuerpo del correo listo para enviar (sin asunto ni comillas).
     """

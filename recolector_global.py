@@ -9,18 +9,29 @@ from duckduckgo_search import DDGS
 ARCHIVO_MAESTRO = "leads_globales.csv"
 HUNTER_API_KEY = os.getenv("HUNTER_API_KEY")  # Opcional
 
-# Objetivos globales con cobertura multirregional (incluyendo mercados de habla china)
+# Objetivos globales con cobertura real en los 5 continentes
 OBJETIVOS_GLOBALES = [
-    {"pais": "China", "query": '"Shopify" OR "购物车" OR "立即购买" site:.cn'},
-    {"pais": "Taiwan", "query": '"Shopify" OR "加入購物車" site:.tw'},
-    {"pais": "Spain", "query": '"Powered by Shopify" OR "carrito de compra" site:.es'},
-    {"pais": "Mexico", "query": '"Powered by Shopify" OR "añadir al carrito" site:.mx'},
-    {"pais": "Colombia", "query": '"Powered by Shopify" OR "carrito de compras" site:.co'},
-    {"pais": "Chile", "query": '"Powered by Shopify" OR "carro de compras" site:.cl'},
-    {"pais": "Brazil", "query": '"Powered by Shopify" OR "adicionar ao carrinho" site:.com.br'},
-    {"pais": "Portugal", "query": '"Powered by Shopify" OR "adicionar ao carrinho" site:.pt'},
-    {"pais": "France", "query": '"Propulsé par Shopify" OR "ajouter au panier" site:.fr'},
-    {"pais": "United States", "query": '"Powered by Shopify" "add to cart" -site:shopify.com'}
+    # --- AMÉRICA ---
+    {"pais": "América del Norte (US/CA)", "query": '"Powered by Shopify" OR "WooCommerce" "add to cart" site:.com OR site:.ca'},
+    {"pais": "Latinoamérica Hispana", "query": '"Powered by Shopify" OR "Tiendanube" "carrito" OR "comprar" site:.mx OR site:.co OR site:.cl OR site:.ar OR site:.pe'},
+    {"pais": "Brasil", "query": '"Powered by Shopify" "adicionar ao carrinho" site:.br OR site:.com.br'},
+
+    # --- EUROPA ---
+    {"pais": "Europa Occidental (UK/IE)", "query": '"Powered by Shopify" "add to cart" site:.co.uk OR site:.ie'},
+    {"pais": "Europa Continental (FR/DE/ES/IT)", "query": '"Powered by Shopify" "ajouter au panier" OR "in den Warenkorb" OR "añadir al carrito" site:.fr OR site:.de OR site:.es OR site:.it'},
+    {"pais": "Europa del Norte / Nórdicos", "query": '"Powered by Shopify" "lägg i varukorg" OR "køb" site:.se OR site:.dk OR site:.no OR site:.fi'},
+
+    # --- ASIA ---
+    {"pais": "Asia Oriental (JP/KR/CN/TW)", "query": '"Shopify" OR "カート" OR "장바구니" OR "购物车" OR "加入購物車" site:.jp OR site:.kr OR site:.cn OR site:.tw'},
+    {"pais": "Sudeste Asiático & India (SG/IN/MY)", "query": '"Powered by Shopify" "add to cart" site:.sg OR site:.in OR site:.my OR site:.id'},
+    {"pais": "Medio Oriente (AE/SA)", "query": '"Powered by Shopify" "add to cart" OR "أضف إلى السلة" site:.ae OR site:.sa'},
+
+    # --- ÁFRICA ---
+    {"pais": "África Subsahariana y del Sur (ZA/NG/KE)", "query": '"Powered by Shopify" "add to cart" site:.za OR site:.ng OR site:.ke'},
+    {"pais": "África del Norte (EG/MA)", "query": '"Powered by Shopify" "add to cart" site:.eg OR site:.ma'},
+
+    # --- OCEANÍA ---
+    {"pais": "Oceanía (AU/NZ)", "query": '"Powered by Shopify" "add to cart" site:.au OR site:.nz'}
 ]
 
 def cargar_webs_existentes():
@@ -97,7 +108,7 @@ def buscar_en_hunter(dominio):
 
 def ejecutar_recoleccion(resultados_por_pais=5):
     webs_vistas = cargar_webs_existentes()
-    print("🚀 Iniciando recolección autónoma global de tiendas...\n")
+    print("🚀 Iniciando recolección autónoma global de tiendas (5 continentes)...\n")
 
     with DDGS() as ddgs:
         for obj in OBJETIVOS_GLOBALES:

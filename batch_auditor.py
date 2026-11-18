@@ -4,6 +4,7 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import time
+import random  # <-- NUEVO: Para la variación aleatoria y blindar los envíos masivos
 from datetime import datetime
 from groq import Groq
 import config
@@ -141,7 +142,11 @@ def ejecutar_campana():
                 enviados.add(email.lower()) # Sumar al set local para evitar duplicados en la misma corrida
                 print(f"-> ¡Correo enviado con éxito a {email} y registrado en el historial!")
                 count += 1
-                time.sleep(5)
+                
+                # Pausa aleatoria inteligente (entre 20 y 45 segundos) para simular comportamiento humano y escalar sin riesgo
+                pausa_segura = random.randint(20, 45)
+                print(f"⏳ Pausando {pausa_segura} segundos para cuidar la reputación de la cuenta...")
+                time.sleep(pausa_segura)
             else:
                 print(f"-> Falló el envío a {email}")
 

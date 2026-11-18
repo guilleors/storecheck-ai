@@ -6,7 +6,7 @@ import requests
 from bs4 import BeautifulSoup
 from duckduckgo_search import DDGS
 
-ARCHIVO_MAESTRO = "leads_globales.csv"
+ARCHIVO_MAESTRO = "prospectos_storecheck.csv"
 HUNTER_API_KEY = os.getenv("HUNTER_API_KEY")  # Opcional
 
 # Objetivos globales con cobertura real en los 5 continentes

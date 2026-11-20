@@ -1007,8 +1007,20 @@ elif is_paid or is_playbook_paid:
     doc_kind = "playbook" if is_playbook_paid else "audit"
     expected_file_name = "StoreCheck_AI_Playbook_Pro.pdf" if is_playbook_paid else "StoreCheck_AI_Corporate_Report.pdf"
 
+    if not target_store_url:
+        fallback_url = st.text_input(
+            t["url_label"],
+            placeholder=t["url_placeholder"],
+            key="fallback_paid_store_url",
+        )
+        if st.button("Generar PDF", use_container_width=True, key="btn_fallback_generate_pdf"):
+            if not fallback_url.strip():
+                st.warning(t["error_url"])
+            else:
+                target_store_url = normalize_store_url(fallback_url)
+
     if target_store_url:
-        if "auto_pdf_bytes" not in st.session_state or st.session_state.get("auto_pdf_name") != expected_file_name:
+        if "auto_pdf_bytes" not in st.session_state or st.session_state.get("auto_pdf_name") != expected_file_name or st.session_state.get("auto_pdf_store") != target_store_url:
             with st.spinner(f"🤖 Generando tu PDF para {target_store_url}..."):
                 ok_scrape, rec_data = scrape_store_data(target_store_url)
                 if not ok_scrape:
@@ -1020,6 +1032,7 @@ elif is_paid or is_playbook_paid:
                         target_store_url, report_body, target_lang, h_val, s_val, sp_val, m_val, doc_type=doc_kind
                     )
                     st.session_state["auto_pdf_name"] = expected_file_name
+                    st.session_state["auto_pdf_store"] = target_store_url
 
         if "auto_pdf_bytes" in st.session_state:
             st.download_button(
@@ -1029,8 +1042,6 @@ elif is_paid or is_playbook_paid:
                 mime="application/pdf",
                 use_container_width=True,
             )
-    else:
-        st.error("❌ No se detectó la URL de la tienda en el enlace de retorno.")
 
 st.markdown("---")
 st.markdown(

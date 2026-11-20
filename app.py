@@ -954,10 +954,22 @@ if has_session_audit:
                 "?success=true&success_playbook=true",
             )
 
-            st.link_button(
-                label="💳 Pagar $150 USD y Activar Playbook Pro",
-                url=playbook_checkout_url,
-                use_container_width=True,
+            st.markdown(
+                f"""
+                <a href="{playbook_checkout_url}" target="_self" style="
+                    display: block;
+                    width: 100%;
+                    text-align: center;
+                    padding: 0.65rem 1rem;
+                    background-color: #262730;
+                    color: #FFFFFF;
+                    border: 1px solid rgba(250, 250, 250, 0.2);
+                    border-radius: 0.5rem;
+                    text-decoration: none;
+                    font-weight: 500;
+                ">💳 Pagar $150 USD y Activar Playbook Pro</a>
+                """,
+                unsafe_allow_html=True,
             )
 
     else:
@@ -968,8 +980,22 @@ if has_session_audit:
             "?success=true",
         )
 
-        st.link_button(
-            label=t["btn_full_report"], url=checkout_url, use_container_width=True
+        st.markdown(
+            f"""
+            <a href="{checkout_url}" target="_self" style="
+                display: block;
+                width: 100%;
+                text-align: center;
+                padding: 0.65rem 1rem;
+                background-color: #262730;
+                color: #FFFFFF;
+                border: 1px solid rgba(250, 250, 250, 0.2);
+                border-radius: 0.5rem;
+                text-decoration: none;
+                font-weight: 500;
+            ">{t["btn_full_report"]}</a>
+            """,
+            unsafe_allow_html=True,
         )
 
 elif is_paid or is_playbook_paid:

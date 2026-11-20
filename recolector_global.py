@@ -41,7 +41,7 @@ def cargar_webs_existentes():
         return set()
     with open(ARCHIVO_MAESTRO, mode="r", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
-        return {row["web"].strip().lower() for row in reader if row.get("web")}
+        return {limpiar_dominio(row["web"]) for row in reader if row.get("web") and limpiar_dominio(row["web"])}
 
 
 def guardar_lead_maestro(nombre, email, web, pais):
@@ -61,9 +61,24 @@ def guardar_lead_maestro(nombre, email, web, pais):
 
 
 def limpiar_dominio(url):
-    """Extrae el dominio base limpio"""
-    dominio = re.sub(r"^https?://(www\.)?", "", url).split("/")[0].lower().strip()
+    """Extrae el dominio base limpio sin protocolo, www., rutas ni puertos"""
+    if not url:
+        return ""
+    dominio = re.sub(r"^https?://(www\.)?", "", str(url).strip(), flags=re.IGNORECASE)
+    dominio = dominio.split("/")[0].split("?")[0].split(":")[0].lower().strip().strip(".")
+    if "." not in dominio or len(dominio) < 4:
+        return ""
     return dominio
+
+
+def es_email_valido(mail_limpio, patron_email, basura):
+    if not re.match(patron_email, mail_limpio):
+        return False
+    if any(b in mail_limpio for b in basura):
+        return False
+    if mail_limpio.startswith(("noreply@", "no-reply@", "mailer-daemon@", "postmaster@")):
+        return False
+    return True
 
 
 def validar_tienda_y_extraer_email(dominio):
@@ -72,7 +87,8 @@ def validar_tienda_y_extraer_email(dominio):
     2) Si es tienda real, busca emails públicos válidos en la home y páginas de contacto.
     """
     headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"}
-    patron_email = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
+    patron_email = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+    patron_busqueda = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
     basura = ["sentry.io", "wixpress.com", "example.com", "shopify.com", "domain.com", ".png", ".jpg", ".jpeg", ".webp", ".svg"]
 
     # Paso 1: Verificar home para confirmar que es e-commerce real
@@ -137,15 +153,15 @@ def validar_tienda_y_extraer_email(dominio):
             href = a["href"].strip()
             if href.lower().startswith("mailto:"):
                 mail_limpio = href.split(":", 1)[1].split("?")[0].strip().lower()
-                if re.match(patron_email, mail_limpio) and not any(b in mail_limpio for b in basura):
+                if es_email_valido(mail_limpio, patron_email, basura):
                     return True, mail_limpio
 
         # Buscar en el texto visible
         texto = soup.get_text(" ")
-        encontrados = re.findall(patron_email, texto)
+        encontrados = re.findall(patron_busqueda, texto)
         for mail in encontrados:
-            mail_limpio = mail.lower()
-            if not any(b in mail_limpio for b in basura):
+            mail_limpio = mail.lower().strip()
+            if es_email_valido(mail_limpio, patron_email, basura):
                 return True, mail_limpio
 
     return True, None
@@ -171,6 +187,7 @@ def buscar_en_hunter(dominio):
 
 def ejecutar_recoleccion(resultados_por_pais=5):
     webs_vistas = cargar_webs_existentes()
+    emails_vistos = set()
     print("🚀 Iniciando recolección autónoma global de tiendas (5 continentes)...\n")
 
     with DDGS() as ddgs:
@@ -209,8 +226,13 @@ def ejecutar_recoleccion(resultados_por_pais=5):
                         email = email_hunter
 
                 if email:
-                    print(f"   ✅ ¡Tienda verificada y lead capturado! {email} ({pais})")
-                    guardar_lead_maestro(nombre, email, dominio, pais)
+                    email_norm = email.strip().lower()
+                    if email_norm in emails_vistos:
+                        print(f"   ⏭️ Email duplicado en esta corrida ({email_norm})")
+                        continue
+                    emails_vistos.add(email_norm)
+                    print(f"   ✅ ¡Tienda verificada y lead capturado! {email_norm} ({pais})")
+                    guardar_lead_maestro(nombre, email_norm, dominio, pais)
                 else:
                     print(f"   ❌ Tienda verificada, pero sin email público visible en {dominio}")
 

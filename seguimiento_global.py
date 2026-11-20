@@ -201,7 +201,7 @@ def generar_y_enviar_teaser(nombre, email_dest, web, pais, asunto_original):
 
     [Línea en blanco]
 
-    Párrafo de cierre: Invitalo sin presión a acceder al informe técnico completo en PDF y a la guía de implementación con snippets y plantillas (ej: "Si después querés ver el informe técnico completo y sumar la guía de implementación con snippets y plantillas —a un valor muy accesible—, entrá acá: {link_con_tienda}").
+    Párrafo de cierre: Invitalo sin presión a acceder al informe técnico completo en PDF y a la guía de implementación con snippets y plantillas (ej: "Si querés ver el informe técnico completo, y sumar la guía de implementación con plantillas y snippets listos para implementar —a muy bajo costo—, podés generarlos al instante acá: {link_con_tienda}").
 
     [Línea en blanco]
 

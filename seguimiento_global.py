@@ -1,4 +1,5 @@
 import os
+import re
 import csv
 import json
 import time
@@ -50,6 +51,14 @@ def set_col(fila, nombre_col, valor):
             fila[k] = valor
             return
     fila[nombre_col] = valor
+
+
+def limpiar_dominio_url(web):
+    """Limpia protocolo y barras para armar un parámetro ?store= limpio."""
+    if not web:
+        return ""
+    limpio = re.sub(r"^https?://(www\.)?", "", str(web).strip()).strip("/")
+    return limpio
 
 
 def obtener_idioma_por_pais(pais):
@@ -167,7 +176,8 @@ def generar_y_enviar_teaser(nombre, email_dest, web, pais, asunto_original):
     - Fragmento de texto visible en la tienda: {datos_web['snippet'][:900]}
     """
 
-    link_con_tienda = f"{STREAMLIT_URL}?store={web}"
+    dominio_limpio = limpiar_dominio_url(web)
+    link_con_tienda = f"{STREAMLIT_URL}?store={dominio_limpio}" if dominio_limpio else STREAMLIT_URL
 
     prompt = f"""
     Sos un especialista en optimización de conversión (CRO) escribiendo un correo de respuesta a {saludo} ({web}), quien pidió recibir el pantallazo gratuito que le ofreciste.
@@ -191,7 +201,7 @@ def generar_y_enviar_teaser(nombre, email_dest, web, pais, asunto_original):
 
     [Línea en blanco]
 
-    Párrafo de cierre: Invitalo sin presión a acceder al informe técnico completo en PDF y a la guía de implementación paso a paso (ej: "Si querés ver el informe técnico completo, y sumar la guía de implementación con plantillas y snippets listos para aplicar —a muy bajo costo—, podés generarlos al instante acá: {link_con_tienda}").
+    Párrafo de cierre: Invitalo sin presión a acceder al informe técnico completo en PDF y a la guía de implementación con snippets y plantillas (ej: "Si después querés ver el informe técnico completo y sumar la guía de implementación con snippets y plantillas —a un valor muy accesible—, entrá acá: {link_con_tienda}").
 
     [Línea en blanco]
 
@@ -283,7 +293,8 @@ def clasificar_respuesta_cliente(texto_respuesta):
             response_format={"type": "json_object"}
         )
         resultado = json.loads(chat_completion.choices[0].message.content)
-        return resultado.get("categoria", "Otro")
+        categoria = resultado.get("categoria", "Otro")
+        return categoria if categoria in ["Interesado", "No interesado", "Otro"] else "Otro"
     except Exception:
         return "Otro"
 

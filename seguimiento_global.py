@@ -195,7 +195,7 @@ def generar_y_enviar_teaser(nombre, email_dest, web, pais, asunto_original):
 
     [Línea en blanco]
 
-    Despedida breve en una sola línea (SIN NINGUNA COMA AL FINAL, por ejemplo escribí exactamente "Un saludo" o "Abrazo" sin signos de puntuación finales).
+    Despedida breve en una sola línea (SIN NINGUNA COMA AL FINAL, por ejemplo escribí exactamente "¡Saludos, y que tengas un gran día!" sin signos de puntuación finales).
 
     Devolvé ÚNICAMENTE el cuerpo del correo listo para enviar (sin asunto ni comillas).
     """

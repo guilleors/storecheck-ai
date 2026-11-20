@@ -68,16 +68,16 @@ def scrape_store_data(url):
             url = "https://" + url
 
         response = requests.get(url, headers=headers, timeout=12)
-        
+
         if response.status_code in [403, 401]:
             return False, "El sitio cuenta con estrictas políticas de seguridad (WAF / Cloudflare) que bloquean accesos automatizados."
-        
+
         if response.status_code != 200:
             return False, f"Código de estado HTTP devuelto: {response.status_code}"
 
         soup = BeautifulSoup(response.text, "html.parser")
 
-        title = soup.title.string.strip() if soup.title else "Sin título"
+        title = soup.title.string.strip() if soup.title and soup.title.string else "Sin título"
         meta_desc = ""
         desc_tag = soup.find("meta", attrs={"name": lambda x: x and x.lower() == "description"})
         if desc_tag:
@@ -95,7 +95,7 @@ def scrape_store_data(url):
             platform = "Tiendanube"
 
         has_cart_button = (
-            bool(soup.find_all(class_=lambda x: x and "cart" in x.lower()))
+            bool(soup.find_all(class_=lambda x: x and "cart" in (" ".join(x).lower() if isinstance(x, list) else x.lower())))
             or "carrito" in html_content
             or "bag" in html_content
         )
@@ -104,12 +104,16 @@ def scrape_store_data(url):
             or "finalizar" in html_content
             or "pagar" in html_content
         )
-        
+
         payment_gateways = []
-        if "mercadopago" in html_content: payment_gateways.append("MercadoPago")
-        if "paypal" in html_content: payment_gateways.append("PayPal")
-        if "stripe" in html_content: payment_gateways.append("Stripe")
-        if "transferencia" in html_content or "transfer" in html_content: payment_gateways.append("Transferencia Bancaria")
+        if "mercadopago" in html_content:
+            payment_gateways.append("MercadoPago")
+        if "paypal" in html_content:
+            payment_gateways.append("PayPal")
+        if "stripe" in html_content:
+            payment_gateways.append("Stripe")
+        if "transferencia" in html_content or "transfer" in html_content:
+            payment_gateways.append("Transferencia Bancaria")
 
         for script in soup(["script", "style", "nav", "footer"]):
             script.extract()
@@ -164,7 +168,7 @@ def calculate_store_metrics(scraped_data, language):
         speed_index = "2.7s"
 
     raw_status = "Optimal" if health_score >= 75 else ("Warning" if health_score >= 45 else "Critical")
-    
+
     translations = {
         "Español": {"Optimal": "Óptimo", "Warning": "Mejorable", "Critical": "Crítico"},
         "Português": {"Optimal": "Ótimo", "Warning": "Atenção", "Critical": "Crítico"},
@@ -173,21 +177,21 @@ def calculate_store_metrics(scraped_data, language):
         "中文 (Chinese)": {"Optimal": "极佳", "Warning": "需注意", "Critical": "严重"},
         "English": {"Optimal": "Optimal", "Warning": "Warning", "Critical": "Critical"}
     }
-    
+
     mobile_readiness = translations.get(language, translations["English"]).get(raw_status, raw_status)
 
     return health_score, seo_score, speed_index, mobile_readiness
 
 
-def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mobile):
-    """Genera un reporte PDF con diseño corporativo avanzado, tabla de métricas y forzado de numeración en Python."""
+def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mobile, doc_type="audit"):
+    """Genera un PDF corporativo adaptado al tipo de entregable ('audit' o 'playbook')."""
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
-        buffer, 
-        pagesize=letter, 
-        rightMargin=54, 
-        leftMargin=54, 
-        topMargin=54, 
+        buffer,
+        pagesize=letter,
+        rightMargin=54,
+        leftMargin=54,
+        topMargin=54,
         bottomMargin=54
     )
     styles = getSampleStyleSheet()
@@ -227,9 +231,26 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
         spaceAfter=4
     )
 
-    story.append(Paragraph("StoreCheck AI — Reporte de Auditoría Profesional", title_style))
+    if doc_type == "playbook":
+        doc_title = "StoreCheck AI — Playbook Pro de Implementación"
+        section_header = "<b>Guía Técnica, Snippets y Plan de Acción</b>"
+        intro_fixed_text = (
+            "Guía práctica de implementación con snippets listos para adaptar, ajustes de checkout y "
+            "prioridades de ejecución basadas en los datos reales detectados en el sitio."
+        )
+    else:
+        doc_title = "StoreCheck AI — Reporte de Auditoría Profesional"
+        section_header = "<b>Análisis Técnico y Diagnóstico Detallado</b>"
+        intro_fixed_text = (
+            "Se presenta un informe detallado sobre la experiencia (UI/UX) y la auditoría técnica de su sitio web, "
+            "así como una revisión de la fricción de la fase de compra y una evaluación de ventajas competitivas. "
+            "Además, se proporciona una guía paso a paso para implementar las correcciones necesarias para mejorar "
+            "el rendimiento de conversión del sitio web."
+        )
+
+    story.append(Paragraph(doc_title, title_style))
     story.append(Paragraph(f"<b>Sitio analizado:</b> {html.escape(store_url)} &nbsp;|&nbsp; <b>Idioma:</b> {html.escape(language)}", meta_style))
-    
+
     data_table = [
         [Paragraph("<b>Métrica Clave</b>", body_style), Paragraph("<b>Resultado / Valor</b>", body_style)],
         [Paragraph("Salud General (Health Score)", body_style), Paragraph(f"<b>{health} / 100</b>", body_style)],
@@ -237,23 +258,21 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
         [Paragraph("Índice de Velocidad", body_style), Paragraph(f"{speed}", body_style)],
         [Paragraph("Optimización Móvil", body_style), Paragraph(f"{mobile}", body_style)],
     ]
-    
+
     t_obj = Table(data_table, colWidths=[250, 254])
     t_obj.setStyle(TableStyle([
-        ('BACKGROUND', (0,0), (-1,0), colors.HexColor('#F1F5F9')),
-        ('ALIGN', (0,0), (-1,-1), 'LEFT'),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('BOTTOMPADDING', (0,0), (-1,-1), 6),
-        ('TOPPADDING', (0,0), (-1,-1), 6),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.HexColor('#CBD5E1')),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F1F5F9')),
+        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E1')),
     ]))
-    
+
     story.append(t_obj)
     story.append(Spacer(1, 15))
-    story.append(Paragraph("<b>Análisis Técnico y Diagnóstico Detallado</b>", h2_style))
+    story.append(Paragraph(section_header, h2_style))
     story.append(Spacer(1, 5))
-
-    intro_fixed_text = "Se presenta un informe detallado sobre la experiencia (UI/UX) y la auditoría técnica de su sitio web, así como una revisión de la fricción de la fase de compra y una evaluación de ventajas competitivas. Además, se proporciona una guía paso a paso para implementar las correcciones necesarias para mejorar el rendimiento de conversión del sitio web."
     story.append(Paragraph(intro_fixed_text, body_style))
     story.append(Spacer(1, 10))
 
@@ -268,7 +287,7 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
             continue
         if any(b_lower.startswith(prefix) for prefix in ["hola", "aquí tienes", "después de analizar", "estimado", "presento"]):
             continue
-        
+
         snippet_key = b_lower[:70]
         if snippet_key in seen_snippets:
             continue
@@ -281,34 +300,35 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
             line = line.strip()
             if not line:
                 continue
-            
+
             if re.match(r'^\|?[\s\-:]+\|[\s\-:|]+$', line):
                 continue
-            
+
             line = line.replace("Auditorio técnico", "Auditoría técnica")
             line = line.replace("auditorio técnico", "auditoría técnica")
             line = line.replace("experiencia utilizador", "experiencia de usuario")
             line = line.replace("e varejas", "minorista / e-commerce")
             line = line.replace("<title>", "título: ").replace("</title>", "")
-            
+
             if line.startswith("|") and line.endswith("|"):
                 continue
-            
+
             line = re.sub(r'\$.*?\$', '', line)
             line = line.replace('$', '')
 
             line_lower = line.lower()
             forced_heading = None
-            if "auditoría técnica" in line_lower and len(line) < 40:
-                forced_heading = "1. Auditoría técnica"
-            elif "ui/ux" in line_lower and len(line) < 45:
-                forced_heading = "2. Análisis UI/UX y buyer journey"
-            elif "fricción" in line_lower and len(line) < 45:
-                forced_heading = "3. Revisión de fricción en el proceso de compra"
-            elif "ventaja competitiva" in line_lower and len(line) < 45:
-                forced_heading = "4. Evaluación de ventaja competitiva"
-            elif "implementación" in line_lower and len(line) < 45:
-                forced_heading = "5. Guía de implementación paso a paso"
+            if doc_type == "audit":
+                if "auditoría técnica" in line_lower and len(line) < 40:
+                    forced_heading = "1. Auditoría técnica"
+                elif "ui/ux" in line_lower and len(line) < 45:
+                    forced_heading = "2. Análisis UI/UX y buyer journey"
+                elif "fricción" in line_lower and len(line) < 45:
+                    forced_heading = "3. Revisión de fricción en el proceso de compra"
+                elif "ventaja competitiva" in line_lower and len(line) < 45:
+                    forced_heading = "4. Evaluación de ventaja competitiva"
+                elif "implementación" in line_lower and len(line) < 45:
+                    forced_heading = "5. Guía de implementación paso a paso"
 
             if forced_heading:
                 clean_line = f"<br/><b>{forced_heading}</b>"
@@ -325,14 +345,14 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
                     escaped = "".join(new_parts)
                 else:
                     escaped = escaped.replace("**", "")
-                
+
                 if escaped.startswith("- ") or escaped.startswith("* "):
                     escaped = "• " + escaped[2:]
-                
+
                 clean_line = escaped
-            
+
             formatted_lines.append(clean_line)
-        
+
         if formatted_lines:
             paragraph_html = "<br/>".join(formatted_lines)
             story.append(Paragraph(paragraph_html, body_style))
@@ -372,6 +392,8 @@ except Exception:
 query_store = st.query_params.get("store", "")
 if query_store and "store_url_input" not in st.session_state:
     st.session_state["store_url_input"] = query_store
+if query_store and "store_url" not in st.session_state:
+    st.session_state["store_url"] = query_store
 
 # --- BARRA LATERAL ---
 ui_language = st.sidebar.selectbox(
@@ -538,9 +560,29 @@ i18n_ui = {
 t = i18n_ui[ui_language]
 
 
-def call_groq_chat(client_instance, messages, temperature=0.7):
+def call_groq_chat(client_instance, messages, temperature=0.7, max_tokens=1600):
     if not client_instance:
         raise Exception("El cliente de servicio no está disponible en este momento.")
+
+    preferred_models = [
+        "llama-3.3-70b-versatile",
+        "qwen/qwen3.8-27b",
+        "llama-3.1-8b-instant",
+    ]
+
+    last_error = None
+    for model_id in preferred_models:
+        try:
+            response = client_instance.chat.completions.create(
+                messages=messages,
+                model=model_id,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            return response
+        except Exception as e:
+            last_error = e
+            continue
 
     try:
         models_response = client_instance.models.list()
@@ -549,32 +591,21 @@ def call_groq_chat(client_instance, messages, temperature=0.7):
         chat_models = [
             m_id
             for m_id in all_models
-            if not any(kw in m_id.lower() for kw in excluded_keywords)
+            if m_id not in preferred_models and not any(kw in m_id.lower() for kw in excluded_keywords)
         ]
+        for model_id in chat_models[:3]:
+            try:
+                return client_instance.chat.completions.create(
+                    messages=messages,
+                    model=model_id,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+            except Exception as e:
+                last_error = e
+                continue
     except Exception as e:
-        raise Exception(f"No se pudo consultar los modelos disponibles: {e}")
-
-    if not chat_models:
-        chat_models = all_models
-
-    chat_models.sort(
-        key=lambda name: (
-            0
-            if "70b" in name.lower() or "versatile" in name.lower()
-            else (1 if "instant" in name.lower() else 2)
-        )
-    )
-
-    last_error = None
-    for model_id in chat_models:
-        try:
-            response = client_instance.chat.completions.create(
-                messages=messages, model=model_id, temperature=temperature
-            )
-            return response
-        except Exception as e:
-            last_error = e
-            continue
+        last_error = e
 
     raise Exception(f"Error de comunicación con el servicio: {last_error}")
 
@@ -602,7 +633,7 @@ def reset_callback():
 
 with st.form(key="audit_form"):
     store_url = st.text_input(
-        t["url_label"], 
+        t["url_label"],
         placeholder=t["url_placeholder"],
         key="store_url_input"
     )
@@ -692,7 +723,7 @@ if run_audit:
 
             progress_bar.progress(90)
 
-            chat_completion = call_groq_chat(client, messages, temperature=0.7)
+            chat_completion = call_groq_chat(client, messages, temperature=0.7, max_tokens=900)
             preview_result = chat_completion.choices[0].message.content
 
             progress_bar.progress(100)
@@ -720,7 +751,32 @@ if run_audit:
             status_text.empty()
             st.error(f"❌ {e}")
 
-if "preview_result" in st.session_state:
+# --- RECUPERACIÓN SI VOLVIÓ DE LEMON SQUEEZY SIN SESIÓN PREVIA ---
+is_paid_param = st.query_params.get("success", "false").lower() == "true"
+is_playbook_paid_param = st.query_params.get("success_playbook", "false").lower() == "true"
+
+if (is_paid_param or is_playbook_paid_param) and "scraped_data" not in st.session_state:
+    st.warning("🎉 ¡Pago verificado! Para generar y descargar tu PDF ahora mismo, confirmá o ingresá la URL de la tienda:")
+    url_recuperacion = st.text_input(
+        "URL de la tienda a generar",
+        value=st.session_state.get("store_url", query_store),
+        key="recovery_store_url",
+    )
+    if st.button("⚡ Generar mi descarga ahora", use_container_width=True):
+        if not url_recuperacion.strip():
+            st.warning(t["error_url"])
+        else:
+            with st.spinner("Analizando tienda y preparando tu PDF..."):
+                ok_rec, data_rec = scrape_store_data(url_recuperacion.strip())
+                if not ok_rec:
+                    st.error(f"❌ {data_rec}")
+                else:
+                    st.session_state["store_url"] = url_recuperacion.strip()
+                    st.session_state["scraped_data"] = data_rec
+                    st.session_state["preview_result"] = "Diagnóstico recuperado tras verificación de pago."
+                    st.rerun()
+
+if "preview_result" in st.session_state and "scraped_data" in st.session_state:
     st.markdown("---")
 
     health, seo, speed, mobile = calculate_store_metrics(st.session_state["scraped_data"], ui_language)
@@ -767,7 +823,7 @@ if "preview_result" in st.session_state:
         ],
     )
 
-    is_paid = st.query_params.get("success", "false").lower() == "true"
+    is_paid = is_paid_param or is_playbook_paid_param
 
     if is_paid:
         st.success("🎉 ¡Pago verificado con éxito! Ya podés descargar el PDF de tu reporte.")
@@ -781,7 +837,7 @@ if "preview_result" in st.session_state:
                     comp_info = f"\n- COMPETITOR STORE: {st.session_state['competitor_url']}\n  Platform: {csd['platform']}\n  Title: {csd['title']}"
 
                 full_report_prompt = f"""
-                    You are a world-class principal e-commerce CRO consultant and an elite executive copywriter. 
+                    You are a world-class principal e-commerce CRO consultant and an elite executive copywriter.
                     Analyze the store data from {st.session_state['store_url']}:{comp_info}
                     - Platform: {sd['platform']}
                     - Title: {sd['title']}
@@ -791,14 +847,14 @@ if "preview_result" in st.session_state:
                     - Payment Gateways Found: {', '.join(sd['payment_gateways'])}
                     - Content Snippet: {sd['raw_text'][:1800]}
 
-                    Provide a concise, highly professional, and deep technical audit report based strictly on these elements. 
+                    Provide a concise, highly professional, and deep technical audit report based strictly on these elements.
                     STRICT EDITORIAL & STRUCTURAL RULES:
                     1. DO NOT include any conversational greetings, intros, or polite filler. Start generating the report directly with section headings.
                     2. STRICTLY AVOID ANY REPETITION. Do not repeat sections, do not list titles in multiple foreign languages, and do not use boilerplate placeholder sentences. Every section and bullet point must contain unique, specific insights.
-                    3. Write the response entirely in flawless, professional, and natural corporate {report_language}. Avoid literal translations or colloquialisms. 
+                    3. Write the response entirely in flawless, professional, and natural corporate {report_language}. Avoid literal translations or colloquialisms.
                     4. Ensure rigorous grammar, punctuation, and syntactic coherence.
                     5. DO NOT use Markdown tables (pipes like '|'). Format all findings as clean, structured bullet points or paragraphs.
-                    6. Structure the report into exactly 5 concise sections: 
+                    6. Structure the report into exactly 5 concise sections:
                        1. Auditoría técnica
                        2. Análisis UI/UX y buyer journey
                        3. Revisión de fricción en el proceso de compra
@@ -812,14 +868,15 @@ if "preview_result" in st.session_state:
                     },
                     {"role": "user", "content": full_report_prompt},
                 ]
-                full_completion = call_groq_chat(client, full_messages, temperature=0.3)
+                full_completion = call_groq_chat(client, full_messages, temperature=0.3, max_tokens=1800)
                 st.session_state["full_report_result"] = full_completion.choices[0].message.content
 
         pdf_bytes = generate_pdf_report(
             st.session_state["store_url"],
             st.session_state["full_report_result"],
             report_language,
-            health, seo, speed, mobile
+            health, seo, speed, mobile,
+            doc_type="audit",
         )
         st.download_button(
             label=t["btn_download_unlocked"],
@@ -833,7 +890,7 @@ if "preview_result" in st.session_state:
         st.markdown("### 🗺️ Playbook de Implementación Pro ($150 USD)")
         st.info("Obtené los snippets de código exactos, configuraciones de SEO y correcciones UI/UX listas para integrar, basadas exclusivamente en los hallazgos de tu auditoría oficial.")
 
-        is_playbook_paid = st.query_params.get("success_playbook", "false").lower() == "true"
+        is_playbook_paid = is_playbook_paid_param
 
         if is_playbook_paid:
             st.success("🎉 ¡Pago del Playbook Pro verificado con éxito! Tu guía técnica de implementación y snippets a medida ya están listos.")
@@ -867,21 +924,22 @@ if "preview_result" in st.session_state:
                            3. Arquitectura del checkout y pasarelas de pago
                            4. Plan de acción de 7 días para escalar
                         """
-                    
+
                     playbook_messages = [
                         {"role": "system", "content": "You are an elite technical consultant and e-commerce conversion architect."},
                         {"role": "user", "content": playbook_prompt},
                     ]
-                    playbook_completion = call_groq_chat(client, playbook_messages, temperature=0.3)
+                    playbook_completion = call_groq_chat(client, playbook_messages, temperature=0.3, max_tokens=1800)
                     st.session_state["playbook_report_result"] = playbook_completion.choices[0].message.content
 
             pdf_playbook_bytes = generate_pdf_report(
                 st.session_state["store_url"],
                 st.session_state["playbook_report_result"],
                 report_language,
-                health, seo, speed, mobile
+                health, seo, speed, mobile,
+                doc_type="playbook",
             )
-            
+
             st.download_button(
                 label="📥 Descargar mi Playbook Pro de Implementación (PDF)",
                 data=pdf_playbook_bytes,
@@ -891,7 +949,7 @@ if "preview_result" in st.session_state:
             )
         else:
             playbook_checkout_url = "https://storecheck-ai.lemonsqueezy.com/checkout/buy/c88fd3da-a0e7-4319-821a-f126d584d96e?checkout[redirect_url]=https://storecheck-ai.streamlit.app/?success=true&success_playbook=true"
-            
+
             st.link_button(
                 label="💳 Pagar $150 USD y Activar Playbook Pro",
                 url=playbook_checkout_url,

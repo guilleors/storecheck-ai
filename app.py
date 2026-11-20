@@ -20,6 +20,38 @@ st.set_page_config(
     layout="centered",
 )
 
+LAST_STORE_FILE = "last_audited_store.txt"
+
+
+def normalize_store_url(raw_url):
+    cleaned = (raw_url or "").strip()
+    if not cleaned:
+        return ""
+    if not cleaned.startswith("http://") and not cleaned.startswith("https://"):
+        cleaned = "https://" + cleaned
+    return cleaned
+
+
+def save_last_store_url(url):
+    normalized = normalize_store_url(url)
+    if normalized:
+        try:
+            with open(LAST_STORE_FILE, "w", encoding="utf-8") as f:
+                f.write(normalized)
+        except Exception:
+            pass
+
+
+def load_last_store_url():
+    try:
+        if os.path.exists(LAST_STORE_FILE):
+            with open(LAST_STORE_FILE, "r", encoding="utf-8") as f:
+                return normalize_store_url(f.read())
+    except Exception:
+        pass
+    return ""
+
+
 # --- MANEJADOR DE PÁGINAS LEGALES INTERNAS ---
 legal_page = st.query_params.get("page", "main")
 
@@ -52,15 +84,6 @@ elif legal_page == "privacy":
     Los pagos son procesados de forma segura a través de pasarelas externas certificadas (como Lemon Squeezy), sin que nuestra plataforma almacene datos sensibles de tarjetas de crédito.
     """)
     st.stop()
-
-
-def normalize_store_url(raw_url):
-    cleaned = (raw_url or "").strip()
-    if not cleaned:
-        return ""
-    if not cleaned.startswith("http://") and not cleaned.startswith("https://"):
-        cleaned = "https://" + cleaned
-    return cleaned
 
 
 def build_checkout_url(base_checkout_url, redirect_base_url, store_url, extra_params=""):
@@ -516,12 +539,13 @@ def build_report_text(client_instance, store_url, sd, report_language, doc_type=
     return completion.choices[0].message.content
 
 
-# --- CAPTURAR URL DESDE EL EMAIL AUTOMÁTICO ---
+# --- CAPTURAR URL DESDE QUERY PARAMS O ÚLTIMA TIENDA GUARDADA ---
 query_store = normalize_store_url(st.query_params.get("store", ""))
 if query_store and "store_url_input" not in st.session_state:
     st.session_state["store_url_input"] = query_store
 if query_store and "store_url" not in st.session_state:
     st.session_state["store_url"] = query_store
+    save_last_store_url(query_store)
 
 # --- BARRA LATERAL ---
 ui_language = st.sidebar.selectbox(
@@ -703,7 +727,7 @@ st.markdown("---")
 def reset_callback():
     st.session_state["store_url_input"] = ""
     st.session_state["competitor_url_input"] = ""
-    for key in ["preview_result", "scraped_data", "store_url", "full_report_result", "playbook_report_result", "comp_scraped_data", "competitor_url", "auto_pdf_bytes", "auto_pdf_name"]:
+    for key in ["preview_result", "scraped_data", "store_url", "full_report_result", "playbook_report_result", "comp_scraped_data", "competitor_url", "auto_pdf_bytes", "auto_pdf_name", "auto_pdf_store"]:
         if key in st.session_state:
             del st.session_state[key]
 
@@ -743,6 +767,8 @@ if run_audit:
             progress_bar.progress(25)
 
             clean_store_url = normalize_store_url(store_url)
+            save_last_store_url(clean_store_url)
+
             success_scraping, scraped_data = scrape_store_data(clean_store_url)
             if not success_scraping:
                 raise Exception(f"Tienda principal: {scraped_data}")
@@ -820,7 +846,7 @@ if run_audit:
                 if "comp_scraped_data" in st.session_state:
                     del st.session_state["comp_scraped_data"]
 
-            for key_to_del in ["full_report_result", "playbook_report_result", "auto_pdf_bytes", "auto_pdf_name"]:
+            for key_to_del in ["full_report_result", "playbook_report_result", "auto_pdf_bytes", "auto_pdf_name", "auto_pdf_store"]:
                 if key_to_del in st.session_state:
                     del st.session_state[key_to_del]
 
@@ -838,6 +864,9 @@ if has_session_audit:
     st.markdown("---")
 
     active_store_url = normalize_store_url(st.session_state.get("store_url", ""))
+    if active_store_url:
+        save_last_store_url(active_store_url)
+
     health, seo, speed, mobile = calculate_store_metrics(st.session_state["scraped_data"], ui_language)
 
     st.markdown(f"### {t['preview_title']}: {health}/100")
@@ -954,22 +983,10 @@ if has_session_audit:
                 "?success=true&success_playbook=true",
             )
 
-            st.markdown(
-                f"""
-                <a href="{playbook_checkout_url}" target="_self" style="
-                    display: block;
-                    width: 100%;
-                    text-align: center;
-                    padding: 0.65rem 1rem;
-                    background-color: #262730;
-                    color: #FFFFFF;
-                    border: 1px solid rgba(250, 250, 250, 0.2);
-                    border-radius: 0.5rem;
-                    text-decoration: none;
-                    font-weight: 500;
-                ">💳 Pagar $150 USD y Activar Playbook Pro</a>
-                """,
-                unsafe_allow_html=True,
+            st.link_button(
+                label="💳 Pagar $150 USD y Activar Playbook Pro",
+                url=playbook_checkout_url,
+                use_container_width=True,
             )
 
     else:
@@ -980,44 +997,24 @@ if has_session_audit:
             "?success=true",
         )
 
-        st.markdown(
-            f"""
-            <a href="{checkout_url}" target="_self" style="
-                display: block;
-                width: 100%;
-                text-align: center;
-                padding: 0.65rem 1rem;
-                background-color: #262730;
-                color: #FFFFFF;
-                border: 1px solid rgba(250, 250, 250, 0.2);
-                border-radius: 0.5rem;
-                text-decoration: none;
-                font-weight: 500;
-            ">{t["btn_full_report"]}</a>
-            """,
-            unsafe_allow_html=True,
+        st.link_button(
+            label=t["btn_full_report"],
+            url=checkout_url,
+            use_container_width=True,
         )
 
 elif is_paid or is_playbook_paid:
     st.markdown("---")
     st.success("🎉 ¡Pago verificado con éxito!")
 
-    target_store_url = normalize_store_url(st.session_state.get("store_url") or st.query_params.get("store", ""))
+    target_store_url = normalize_store_url(
+        st.session_state.get("store_url")
+        or st.query_params.get("store", "")
+        or load_last_store_url()
+    )
     target_lang = ui_language if ui_language in ["Español", "English", "Português", "Italiano", "Français", "中文 (Chinese)"] else "Español"
     doc_kind = "playbook" if is_playbook_paid else "audit"
     expected_file_name = "StoreCheck_AI_Playbook_Pro.pdf" if is_playbook_paid else "StoreCheck_AI_Corporate_Report.pdf"
-
-    if not target_store_url:
-        fallback_url = st.text_input(
-            t["url_label"],
-            placeholder=t["url_placeholder"],
-            key="fallback_paid_store_url",
-        )
-        if st.button("Generar PDF", use_container_width=True, key="btn_fallback_generate_pdf"):
-            if not fallback_url.strip():
-                st.warning(t["error_url"])
-            else:
-                target_store_url = normalize_store_url(fallback_url)
 
     if target_store_url:
         if "auto_pdf_bytes" not in st.session_state or st.session_state.get("auto_pdf_name") != expected_file_name or st.session_state.get("auto_pdf_store") != target_store_url:
@@ -1042,6 +1039,32 @@ elif is_paid or is_playbook_paid:
                 mime="application/pdf",
                 use_container_width=True,
             )
+    else:
+        st.info("Ingresá la URL de la tienda auditada para generar tu PDF:")
+        fallback_url = st.text_input(
+            t["url_label"],
+            placeholder=t["url_placeholder"],
+            key="fallback_paid_store_url",
+        )
+        if st.button("Generar PDF", use_container_width=True, key="btn_fallback_generate_pdf"):
+            if not fallback_url.strip():
+                st.warning(t["error_url"])
+            else:
+                manual_store = normalize_store_url(fallback_url)
+                save_last_store_url(manual_store)
+                with st.spinner(f"🤖 Generando tu PDF para {manual_store}..."):
+                    ok_scrape, rec_data = scrape_store_data(manual_store)
+                    if not ok_scrape:
+                        st.error(f"❌ {rec_data}")
+                    else:
+                        h_val, s_val, sp_val, m_val = calculate_store_metrics(rec_data, target_lang)
+                        report_body = build_report_text(client, manual_store, rec_data, target_lang, doc_type=doc_kind)
+                        st.session_state["auto_pdf_bytes"] = generate_pdf_report(
+                            manual_store, report_body, target_lang, h_val, s_val, sp_val, m_val, doc_type=doc_kind
+                        )
+                        st.session_state["auto_pdf_name"] = expected_file_name
+                        st.session_state["auto_pdf_store"] = manual_store
+                        st.rerun()
 
 st.markdown("---")
 st.markdown(

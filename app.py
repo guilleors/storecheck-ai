@@ -389,8 +389,7 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
         if not lines:
             continue
 
-        # Si el bloque completo es un snippet de código (o empieza con ```)
-        if lines[0].startswith("```") or (len(lines) >= 2 and all(_is_code_line(l) or l in ["{", "}", "});", "});"] for l in lines if not l.startswith("```"))):
+        if lines[0].startswith("```") or (len(lines) >= 2 and all(_is_code_line(l) or l in ["{", "}", "});"] for l in lines if not l.startswith("```"))):
             code_lines = []
             for l in lines:
                 if l.startswith("```"):
@@ -407,10 +406,8 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
             if line.startswith("```"):
                 continue
 
-            # Quitar numerales Markdown sueltos al inicio (ej. "# 3. ...", "## ...")
             line_no_hash = re.sub(r'^#+\s*', '', line).strip()
 
-            # Quitar etiquetas sueltas de lenguaje al inicio de línea ("json", "CSS", "javascript", "html")
             if line_no_hash.lower() in ["json", "css", "javascript", "js", "html"]:
                 continue
 
@@ -427,7 +424,6 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
                 line_clean = re.sub(r'\$.*?\$', '', line_clean)
                 line_clean = line_clean.replace('$', '')
 
-            # Detectar encabezados numerados principales (ej. "1. ...", "2. ...", "3. ...", "4. ...", "5. ...")
             if re.match(r'^[1-5]\.\s+[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]', line_clean) and len(line_clean) < 85:
                 if formatted_lines:
                     story.append(Paragraph("<br/>".join(formatted_lines), body_style))
@@ -609,6 +605,71 @@ def build_report_text(client_instance, store_url, sd, report_language, doc_type=
     return completion.choices[0].message.content
 
 
+def get_or_build_pdf(
+    store_url,
+    report_lang,
+    doc_type,
+    scraped_data=None,
+    metrics=None,
+    comp_info="",
+):
+    """Genera y cachea por separado el PDF de auditoría ('audit') o del Playbook ('playbook')."""
+    if doc_type == "playbook":
+        text_key = "playbook_report_text"
+        pdf_key = "playbook_pdf_bytes"
+        store_key = "playbook_pdf_store"
+        lang_key = "playbook_pdf_lang"
+        spinner_msg = "🤖 Compilando Playbook Pro con snippets de código y optimizaciones CRO avanzadas..."
+    else:
+        text_key = "audit_report_text"
+        pdf_key = "audit_pdf_bytes"
+        store_key = "audit_pdf_store"
+        lang_key = "audit_pdf_lang"
+        spinner_msg = "🤖 Elaborando informe técnico profundo y diseño corporativo..."
+
+    needs_rebuild = (
+        pdf_key not in st.session_state
+        or st.session_state.get(store_key) != store_url
+        or st.session_state.get(lang_key) != report_lang
+    )
+
+    if needs_rebuild:
+        with st.spinner(spinner_msg):
+            sd_to_use = scraped_data
+            if not sd_to_use:
+                ok_s, d_s = scrape_store_data(store_url)
+                if not ok_s:
+                    st.error(f"❌ {d_s}")
+                    return None
+                sd_to_use = d_s
+
+            if metrics:
+                h_val, s_val, sp_val, m_val = metrics
+            else:
+                h_val, s_val, sp_val, m_val = calculate_store_metrics(sd_to_use, report_lang)
+
+            report_text = build_report_text(
+                client, store_url, sd_to_use, report_lang, doc_type=doc_type, comp_info=comp_info
+            )
+            pdf_bytes = generate_pdf_report(
+                store_url,
+                report_text,
+                report_lang,
+                h_val,
+                s_val,
+                sp_val,
+                m_val,
+                doc_type=doc_type,
+            )
+
+            st.session_state[text_key] = report_text
+            st.session_state[pdf_key] = pdf_bytes
+            st.session_state[store_key] = store_url
+            st.session_state[lang_key] = report_lang
+
+    return st.session_state.get(pdf_key)
+
+
 def render_playbook_section(
     store_url,
     report_lang,
@@ -631,49 +692,23 @@ def render_playbook_section(
             "🎉 ¡Pago del Playbook Pro verificado con éxito! "
             "Tu guía técnica de implementación y snippets a medida ya están listos."
         )
-
-        if "playbook_report_result" not in st.session_state or st.session_state.get("playbook_store") != store_url:
-            with st.spinner("🤖 Compilando Playbook Pro con snippets de código y optimizaciones CRO avanzadas..."):
-                sd_to_use = scraped_data
-                if not sd_to_use:
-                    ok_s, d_s = scrape_store_data(store_url)
-                    if not ok_s:
-                        st.error(f"❌ {d_s}")
-                        return
-                    sd_to_use = d_s
-
-                st.session_state["playbook_report_result"] = build_report_text(
-                    client, store_url, sd_to_use, report_lang, doc_type="playbook", comp_info=comp_info
-                )
-                st.session_state["playbook_store"] = store_url
-
-        if metrics:
-            h_val, s_val, sp_val, m_val = metrics
-        else:
-            sd_m = scraped_data
-            if not sd_m:
-                ok_m, d_m = scrape_store_data(store_url)
-                sd_m = d_m if ok_m else {"platform": "", "title": "", "meta_description": "", "has_cart_button": False, "has_checkout_link": False, "payment_gateways": [], "raw_text": ""}
-            h_val, s_val, sp_val, m_val = calculate_store_metrics(sd_m, report_lang)
-
-        pdf_playbook_bytes = generate_pdf_report(
-            store_url,
-            st.session_state["playbook_report_result"],
-            report_lang,
-            h_val,
-            s_val,
-            sp_val,
-            m_val,
+        pdf_playbook_bytes = get_or_build_pdf(
+            store_url=store_url,
+            report_lang=report_lang,
             doc_type="playbook",
+            scraped_data=scraped_data,
+            metrics=metrics,
+            comp_info=comp_info,
         )
-
-        st.download_button(
-            label="📥 Descargar mi Playbook Pro de Implementación (PDF)",
-            data=pdf_playbook_bytes,
-            file_name="StoreCheck_AI_Playbook_Pro.pdf",
-            mime="application/pdf",
-            use_container_width=True,
-        )
+        if pdf_playbook_bytes:
+            st.download_button(
+                label="📥 Descargar mi Playbook Pro de Implementación (PDF)",
+                data=pdf_playbook_bytes,
+                file_name="StoreCheck_AI_Playbook_Pro.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+                key=f"dl_playbook_{store_url}",
+            )
     else:
         playbook_checkout_url = build_checkout_url(
             "https://storecheck-ai.lemonsqueezy.com/checkout/buy/c88fd3da-a0e7-4319-821a-f126d584d96e",
@@ -727,7 +762,7 @@ i18n_ui = {
         "full_report_info": "Obtené el informe técnico completo con formato corporativo, guías de optimización paso a paso y análisis profundo de conversión.",
         "report_lang_label": "Seleccioná el idioma para tu Reporte PDF completo:",
         "btn_full_report": "💳 Pagar $19 USD y Descargar PDF Pro",
-        "btn_download_unlocked": "📥 Descargar mi Reporte PDF Corporativo",
+        "btn_download_unlocked": "📥 Descargar mi Reporte PDF Corporativo ($19)",
         "terms": "Términos y Condiciones",
         "privacy": "Política de Privacidad",
         "error_url": "Por favor, ingresá una URL válida.",
@@ -752,7 +787,7 @@ i18n_ui = {
         "full_report_info": "Get the complete technical report with corporate formatting, step-by-step optimization guides, and conversion deep-dive.",
         "report_lang_label": "Select the language for your full PDF report:",
         "btn_full_report": "💳 Pay $19 USD & Download Pro PDF",
-        "btn_download_unlocked": "📥 Download My Corporate PDF Report",
+        "btn_download_unlocked": "📥 Download My Corporate PDF Report ($19)",
         "terms": "Terms of Service",
         "privacy": "Privacy Policy",
         "error_url": "Please enter a valid URL.",
@@ -777,7 +812,7 @@ i18n_ui = {
         "full_report_info": "Obtenha o relatório técnico completo com formato corporativo, guias de otimização e análise profunda.",
         "report_lang_label": "Selecione o idioma para o seu relatório PDF completo:",
         "btn_full_report": "💳 Pagar $19 USD e Baixar PDF Pro",
-        "btn_download_unlocked": "📥 Baixar meu Relatório PDF Corporativo",
+        "btn_download_unlocked": "📥 Baixar meu Relatório PDF Corporativo ($19)",
         "terms": "Termos de Serviço",
         "privacy": "Política de Privacidade",
         "error_url": "Por favor, insira um URL válido.",
@@ -802,7 +837,7 @@ i18n_ui = {
         "full_report_info": "Ottieni il report tecnico completo con formattazione aziendale e guide di ottimizzazione dettagliate.",
         "report_lang_label": "Seleziona la lingua per il tuo rapporto PDF completo:",
         "btn_full_report": "💳 Paga $19 USD e Scarica PDF Pro",
-        "btn_download_unlocked": "📥 Scarica il mio Report PDF Aziendale",
+        "btn_download_unlocked": "📥 Scarica il mio Report PDF Aziendale ($19)",
         "terms": "Termini di Servizio",
         "privacy": "Informativa sulla Privacy",
         "error_url": "Si prega di inserire un URL valido.",
@@ -827,7 +862,7 @@ i18n_ui = {
         "full_report_info": "Obtenez le rapport technique complet avec mise en page d'entreprise et guides d'optimisation.",
         "report_lang_label": "Sélectionnez la langue de votre rapport PDF complet :",
         "btn_full_report": "💳 Payer 19 $ USD et Télécharger PDF Pro",
-        "btn_download_unlocked": "📥 Télécharger mon Rapport PDF d'Entreprise",
+        "btn_download_unlocked": "📥 Télécharger mon Rapport PDF d'Entreprise ($19)",
         "terms": "Conditions Générales",
         "privacy": "Politique de Confidentialité",
         "error_url": "Veuillez entrer une URL valide.",
@@ -852,7 +887,7 @@ i18n_ui = {
         "full_report_info": "获取包含企业级格式、分步优化指南和转化深度剖析的完整技术报告。",
         "report_lang_label": "选择完整PDF报告的语言：",
         "btn_full_report": "💳 支付 $19 USD 并下载 Pro PDF",
-        "btn_download_unlocked": "📥 下载我的企业版PDF报告",
+        "btn_download_unlocked": "📥 下载我的企业版PDF报告 ($19)",
         "terms": "服务条款",
         "privacy": "隐私政策",
         "error_url": "请输入有效的网址。",
@@ -881,14 +916,16 @@ def reset_callback():
         "preview_result",
         "scraped_data",
         "store_url",
-        "full_report_result",
-        "playbook_report_result",
-        "playbook_store",
+        "audit_report_text",
+        "audit_pdf_bytes",
+        "audit_pdf_store",
+        "audit_pdf_lang",
+        "playbook_report_text",
+        "playbook_pdf_bytes",
+        "playbook_pdf_store",
+        "playbook_pdf_lang",
         "comp_scraped_data",
         "competitor_url",
-        "auto_pdf_bytes",
-        "auto_pdf_name",
-        "auto_pdf_store",
     ]:
         if key in st.session_state:
             del st.session_state[key]
@@ -1009,12 +1046,14 @@ if run_audit:
                     del st.session_state["comp_scraped_data"]
 
             for key_to_del in [
-                "full_report_result",
-                "playbook_report_result",
-                "playbook_store",
-                "auto_pdf_bytes",
-                "auto_pdf_name",
-                "auto_pdf_store",
+                "audit_report_text",
+                "audit_pdf_bytes",
+                "audit_pdf_store",
+                "audit_pdf_lang",
+                "playbook_report_text",
+                "playbook_pdf_bytes",
+                "playbook_pdf_store",
+                "playbook_pdf_lang",
             ]:
                 if key_to_del in st.session_state:
                     del st.session_state[key_to_del]
@@ -1080,40 +1119,31 @@ if has_session_audit:
         ],
     )
 
+    comp_info_str = ""
+    if "comp_scraped_data" in st.session_state:
+        csd = st.session_state["comp_scraped_data"]
+        comp_info_str = f"\n- COMPETITOR STORE: {st.session_state['competitor_url']}\n  Platform: {csd['platform']}\n  Title: {csd['title']}"
+
     if is_paid or is_playbook_paid:
-        st.success("🎉 ¡Pago verificado con éxito! Ya podés descargar el PDF de tu reporte.")
+        st.success("🎉 ¡Pago verificado con éxito! Ya podés descargar tu reporte.")
 
-        if "full_report_result" not in st.session_state:
-            with st.spinner("🤖 Elaborando informe técnico profundo y diseño corporativo..."):
-                sd = st.session_state["scraped_data"]
-                comp_info = ""
-                if "comp_scraped_data" in st.session_state:
-                    csd = st.session_state["comp_scraped_data"]
-                    comp_info = f"\n- COMPETITOR STORE: {st.session_state['competitor_url']}\n  Platform: {csd['platform']}\n  Title: {csd['title']}"
-
-                st.session_state["full_report_result"] = build_report_text(
-                    client, active_store_url, sd, report_language, doc_type="audit", comp_info=comp_info
-                )
-
-        pdf_bytes = generate_pdf_report(
-            active_store_url,
-            st.session_state["full_report_result"],
-            report_language,
-            health, seo, speed, mobile,
+        audit_pdf_bytes = get_or_build_pdf(
+            store_url=active_store_url,
+            report_lang=report_language,
             doc_type="audit",
+            scraped_data=st.session_state["scraped_data"],
+            metrics=(health, seo, speed, mobile),
+            comp_info=comp_info_str,
         )
-        st.download_button(
-            label=t["btn_download_unlocked"],
-            data=pdf_bytes,
-            file_name="StoreCheck_AI_Corporate_Report.pdf",
-            mime="application/pdf",
-            use_container_width=True,
-        )
-
-        comp_info_pb = ""
-        if "comp_scraped_data" in st.session_state:
-            csd = st.session_state["comp_scraped_data"]
-            comp_info_pb = f"\n- COMPETITOR STORE: {st.session_state['competitor_url']}\n  Platform: {csd['platform']}\n  Title: {csd['title']}"
+        if audit_pdf_bytes:
+            st.download_button(
+                label=t["btn_download_unlocked"],
+                data=audit_pdf_bytes,
+                file_name="StoreCheck_AI_Corporate_Report.pdf",
+                mime="application/pdf",
+                use_container_width=True,
+                key=f"dl_audit_session_{active_store_url}",
+            )
 
         render_playbook_section(
             store_url=active_store_url,
@@ -1122,7 +1152,7 @@ if has_session_audit:
             redirect_base_url=app_redirect_base,
             scraped_data=st.session_state["scraped_data"],
             metrics=(health, seo, speed, mobile),
-            comp_info=comp_info_pb,
+            comp_info=comp_info_str,
         )
 
     else:
@@ -1149,32 +1179,23 @@ elif is_paid or is_playbook_paid:
         or load_last_store_url()
     )
     target_lang = ui_language if ui_language in ["Español", "English", "Português", "Italiano", "Français", "中文 (Chinese)"] else "Español"
-    doc_kind = "playbook" if is_playbook_paid else "audit"
-    expected_file_name = "StoreCheck_AI_Playbook_Pro.pdf" if is_playbook_paid else "StoreCheck_AI_Corporate_Report.pdf"
 
     if target_store_url:
-        if "auto_pdf_bytes" not in st.session_state or st.session_state.get("auto_pdf_name") != expected_file_name or st.session_state.get("auto_pdf_store") != target_store_url:
-            with st.spinner(f"🤖 Generando tu PDF para {target_store_url}..."):
-                ok_scrape, rec_data = scrape_store_data(target_store_url)
-                if not ok_scrape:
-                    st.error(f"❌ {rec_data}")
-                else:
-                    h_val, s_val, sp_val, m_val = calculate_store_metrics(rec_data, target_lang)
-                    report_body = build_report_text(client, target_store_url, rec_data, target_lang, doc_type=doc_kind)
-                    st.session_state["auto_pdf_bytes"] = generate_pdf_report(
-                        target_store_url, report_body, target_lang, h_val, s_val, sp_val, m_val, doc_type=doc_kind
-                    )
-                    st.session_state["auto_pdf_name"] = expected_file_name
-                    st.session_state["auto_pdf_store"] = target_store_url
-
-        if "auto_pdf_bytes" in st.session_state:
-            st.download_button(
-                label=t["btn_download_unlocked"],
-                data=st.session_state["auto_pdf_bytes"],
-                file_name=st.session_state.get("auto_pdf_name", expected_file_name),
-                mime="application/pdf",
-                use_container_width=True,
+        if not is_playbook_paid:
+            audit_pdf_bytes = get_or_build_pdf(
+                store_url=target_store_url,
+                report_lang=target_lang,
+                doc_type="audit",
             )
+            if audit_pdf_bytes:
+                st.download_button(
+                    label=t["btn_download_unlocked"],
+                    data=audit_pdf_bytes,
+                    file_name="StoreCheck_AI_Corporate_Report.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                    key=f"dl_audit_return_{target_store_url}",
+                )
 
         render_playbook_section(
             store_url=target_store_url,
@@ -1195,19 +1216,8 @@ elif is_paid or is_playbook_paid:
             else:
                 manual_store = normalize_store_url(fallback_url)
                 save_last_store_url(manual_store)
-                with st.spinner(f"🤖 Generando tu PDF para {manual_store}..."):
-                    ok_scrape, rec_data = scrape_store_data(manual_store)
-                    if not ok_scrape:
-                        st.error(f"❌ {rec_data}")
-                    else:
-                        h_val, s_val, sp_val, m_val = calculate_store_metrics(rec_data, target_lang)
-                        report_body = build_report_text(client, manual_store, rec_data, target_lang, doc_type=doc_kind)
-                        st.session_state["auto_pdf_bytes"] = generate_pdf_report(
-                            manual_store, report_body, target_lang, h_val, s_val, sp_val, m_val, doc_type=doc_kind
-                        )
-                        st.session_state["auto_pdf_name"] = expected_file_name
-                        st.session_state["auto_pdf_store"] = manual_store
-                        st.rerun()
+                st.session_state["store_url"] = manual_store
+                st.rerun()
 
 st.markdown("---")
 st.markdown(

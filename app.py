@@ -605,7 +605,7 @@ def build_report_text(client_instance, store_url, sd, report_language, doc_type=
     return completion.choices[0].message.content
 
 
-def get_or_build_pdf(
+def build_single_pdf(
     store_url,
     report_lang,
     doc_type,
@@ -613,7 +613,7 @@ def get_or_build_pdf(
     metrics=None,
     comp_info="",
 ):
-    """Genera y cachea por separado el PDF de auditoría ('audit') o del Playbook ('playbook')."""
+    """Genera y guarda en session_state un único PDF ('audit' o 'playbook') con una sola llamada a la API."""
     if doc_type == "playbook":
         text_key = "playbook_report_text"
         pdf_key = "playbook_pdf_bytes"
@@ -670,6 +670,35 @@ def get_or_build_pdf(
     return st.session_state.get(pdf_key)
 
 
+def render_audit_download_button(
+    button_label,
+    button_key,
+    store_url,
+    report_lang,
+    scraped_data=None,
+    metrics=None,
+    comp_info="",
+):
+    """Renderiza el botón de descarga del Reporte de Auditoría ($19) con su propio PDF."""
+    audit_pdf_bytes = build_single_pdf(
+        store_url=store_url,
+        report_lang=report_lang,
+        doc_type="audit",
+        scraped_data=scraped_data,
+        metrics=metrics,
+        comp_info=comp_info,
+    )
+    if audit_pdf_bytes:
+        st.download_button(
+            label=button_label,
+            data=audit_pdf_bytes,
+            file_name="StoreCheck_AI_Corporate_Report.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+            key=button_key,
+        )
+
+
 def render_playbook_section(
     store_url,
     report_lang,
@@ -692,7 +721,7 @@ def render_playbook_section(
             "🎉 ¡Pago del Playbook Pro verificado con éxito! "
             "Tu guía técnica de implementación y snippets a medida ya están listos."
         )
-        pdf_playbook_bytes = get_or_build_pdf(
+        pdf_playbook_bytes = build_single_pdf(
             store_url=store_url,
             report_lang=report_lang,
             doc_type="playbook",
@@ -707,7 +736,7 @@ def render_playbook_section(
                 file_name="StoreCheck_AI_Playbook_Pro.pdf",
                 mime="application/pdf",
                 use_container_width=True,
-                key=f"dl_playbook_{store_url}",
+                key=f"dl_playbook_only_{store_url}",
             )
     else:
         playbook_checkout_url = build_checkout_url(
@@ -1127,23 +1156,15 @@ if has_session_audit:
     if is_paid or is_playbook_paid:
         st.success("🎉 ¡Pago verificado con éxito! Ya podés descargar tu reporte.")
 
-        audit_pdf_bytes = get_or_build_pdf(
+        render_audit_download_button(
+            button_label=t["btn_download_unlocked"],
+            button_key=f"dl_audit_session_{active_store_url}",
             store_url=active_store_url,
             report_lang=report_language,
-            doc_type="audit",
             scraped_data=st.session_state["scraped_data"],
             metrics=(health, seo, speed, mobile),
             comp_info=comp_info_str,
         )
-        if audit_pdf_bytes:
-            st.download_button(
-                label=t["btn_download_unlocked"],
-                data=audit_pdf_bytes,
-                file_name="StoreCheck_AI_Corporate_Report.pdf",
-                mime="application/pdf",
-                use_container_width=True,
-                key=f"dl_audit_session_{active_store_url}",
-            )
 
         render_playbook_section(
             store_url=active_store_url,
@@ -1181,28 +1202,34 @@ elif is_paid or is_playbook_paid:
     target_lang = ui_language if ui_language in ["Español", "English", "Português", "Italiano", "Français", "中文 (Chinese)"] else "Español"
 
     if target_store_url:
-        if not is_playbook_paid:
-            audit_pdf_bytes = get_or_build_pdf(
+        if is_playbook_paid:
+            render_playbook_section(
                 store_url=target_store_url,
                 report_lang=target_lang,
-                doc_type="audit",
+                is_playbook_already_paid=True,
+                redirect_base_url=app_redirect_base,
             )
-            if audit_pdf_bytes:
-                st.download_button(
-                    label=t["btn_download_unlocked"],
-                    data=audit_pdf_bytes,
-                    file_name="StoreCheck_AI_Corporate_Report.pdf",
-                    mime="application/pdf",
-                    use_container_width=True,
-                    key=f"dl_audit_return_{target_store_url}",
+            if "audit_pdf_bytes" in st.session_state and st.session_state.get("audit_pdf_store") == target_store_url:
+                st.markdown("---")
+                render_audit_download_button(
+                    button_label=t["btn_download_unlocked"],
+                    button_key=f"dl_audit_from_pb_{target_store_url}",
+                    store_url=target_store_url,
+                    report_lang=st.session_state.get("audit_pdf_lang", target_lang),
                 )
-
-        render_playbook_section(
-            store_url=target_store_url,
-            report_lang=target_lang,
-            is_playbook_already_paid=is_playbook_paid,
-            redirect_base_url=app_redirect_base,
-        )
+        else:
+            render_audit_download_button(
+                button_label=t["btn_download_unlocked"],
+                button_key=f"dl_audit_return_{target_store_url}",
+                store_url=target_store_url,
+                report_lang=target_lang,
+            )
+            render_playbook_section(
+                store_url=target_store_url,
+                report_lang=target_lang,
+                is_playbook_already_paid=False,
+                redirect_base_url=app_redirect_base,
+            )
     else:
         st.info("Ingresá la URL de la tienda auditada para generar tu PDF:")
         fallback_url = st.text_input(

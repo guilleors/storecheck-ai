@@ -751,31 +751,6 @@ if run_audit:
             status_text.empty()
             st.error(f"❌ {e}")
 
-# --- RECUPERACIÓN SI VOLVIÓ DE LEMON SQUEEZY SIN SESIÓN PREVIA ---
-is_paid_param = st.query_params.get("success", "false").lower() == "true"
-is_playbook_paid_param = st.query_params.get("success_playbook", "false").lower() == "true"
-
-if (is_paid_param or is_playbook_paid_param) and "scraped_data" not in st.session_state:
-    st.warning("🎉 ¡Pago verificado! Para generar y descargar tu PDF ahora mismo, confirmá o ingresá la URL de la tienda:")
-    url_recuperacion = st.text_input(
-        "URL de la tienda a generar",
-        value=st.session_state.get("store_url", query_store),
-        key="recovery_store_url",
-    )
-    if st.button("⚡ Generar mi descarga ahora", use_container_width=True):
-        if not url_recuperacion.strip():
-            st.warning(t["error_url"])
-        else:
-            with st.spinner("Analizando tienda y preparando tu PDF..."):
-                ok_rec, data_rec = scrape_store_data(url_recuperacion.strip())
-                if not ok_rec:
-                    st.error(f"❌ {data_rec}")
-                else:
-                    st.session_state["store_url"] = url_recuperacion.strip()
-                    st.session_state["scraped_data"] = data_rec
-                    st.session_state["preview_result"] = "Diagnóstico recuperado tras verificación de pago."
-                    st.rerun()
-
 if "preview_result" in st.session_state and "scraped_data" in st.session_state:
     st.markdown("---")
 
@@ -823,9 +798,10 @@ if "preview_result" in st.session_state and "scraped_data" in st.session_state:
         ],
     )
 
-    is_paid = is_paid_param or is_playbook_paid_param
+    is_paid = st.query_params.get("success", "false").lower() == "true"
+    is_playbook_paid = st.query_params.get("success_playbook", "false").lower() == "true"
 
-    if is_paid:
+    if is_paid or is_playbook_paid:
         st.success("🎉 ¡Pago verificado con éxito! Ya podés descargar el PDF de tu reporte.")
 
         if "full_report_result" not in st.session_state:
@@ -889,8 +865,6 @@ if "preview_result" in st.session_state and "scraped_data" in st.session_state:
         st.markdown("---")
         st.markdown("### 🗺️ Playbook de Implementación Pro ($150 USD)")
         st.info("Obtené los snippets de código exactos, configuraciones de SEO y correcciones UI/UX listas para integrar, basadas exclusivamente en los hallazgos de tu auditoría oficial.")
-
-        is_playbook_paid = is_playbook_paid_param
 
         if is_playbook_paid:
             st.success("🎉 ¡Pago del Playbook Pro verificado con éxito! Tu guía técnica de implementación y snippets a medida ya están listos.")

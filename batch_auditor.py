@@ -4,7 +4,7 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 import time
-import random  # <-- NUEVO: Para la variación aleatoria y blindar los envíos masivos
+import random
 from datetime import datetime
 from groq import Groq
 import config
@@ -13,6 +13,7 @@ import config
 client = Groq(api_key=config.GROQ_API_KEY)
 
 HISTORIAL_FILE = "historial_invitaciones_globales.csv"
+
 
 def cargar_historial():
     enviados = set()
@@ -26,6 +27,7 @@ def cargar_historial():
                             enviados.add(campo.strip().lower())
     return enviados
 
+
 def registrar_enviado(nombre, email, web, pais, asunto):
     print(f"DEBUG: Intentando abrir/crear {HISTORIAL_FILE}...")
     file_exists = os.path.exists(HISTORIAL_FILE) and os.path.getsize(HISTORIAL_FILE) > 0
@@ -34,10 +36,11 @@ def registrar_enviado(nombre, email, web, pais, asunto):
         if not file_exists:
             print("DEBUG: El archivo estaba vacío, escribiendo cabecera...")
             writer.writerow(["fecha", "nombre", "email", "web", "pais", "idioma", "asunto", "estado"])
-        
+
         fecha_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         writer.writerow([fecha_actual, nombre, email, web, pais, "Español", asunto, "Invitacion enviada"])
     print(f"DEBUG: ¡Escritura completada con éxito en {HISTORIAL_FILE}!")
+
 
 def generar_correo(nombre, web, pais):
     system_prompt = (
@@ -46,34 +49,35 @@ def generar_correo(nombre, web, pais):
         "manteniendo exactamente el mismo tono educado, directo y natural de Argentina ('Mirá, me tomé el atrevimiento...'). "
         "No inventes párrafos nuevos ni cambies la estructura."
     )
-    
+
     user_prompt = (
         f"Tomá como base este texto exacto y adaptalo completo para {nombre} que está a cargo de {web} (ubicado en {pais}):\n\n"
         f"Hola, {nombre}, ¿cómo estás?\n"
         f"Me tomé el atrevimiento de explorar {web} y noté algunos detalles de fricción en el checkout que seguramente estén interfiriendo en el flujo de ventas.\n"
-        f"¿Podrá interesarte, sin compromiso, un pantallazo rápido con un par de ideas para corregirlo?\n" 
+        f"¿Podrá interesarte, sin compromiso, un pantallazo rápido con un par de ideas para corregirlo?\n"
         f"No dudes en responderme y te lo envío con gusto.\n"
         f"¡Que tengas un gran día!\n"
         "Devolvé únicamente el correo listo para enviar con esos datos:"
     )
 
     response = client.chat.completions.create(
-        model=config.GROQ_MODEL,  # Carga el modelo configurado en config.py
+        model=config.GROQ_MODEL,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt}
         ],
-        temperature=0.2,  # Bien obediente para que respete el molde
-        max_tokens=300    # Margen amplio para que no corte el mensaje
+        temperature=0.2,
+        max_tokens=300
     )
     return response.choices[0].message.content.strip()
+
 
 def enviar_email(destinatario, asunto, cuerpo):
     msg = MIMEMultipart()
     msg['From'] = config.GMAIL_USER
     msg['To'] = destinatario
     msg['Subject'] = asunto
-    
+
     msg.attach(MIMEText(cuerpo, 'plain', 'utf-8'))
 
     try:
@@ -87,16 +91,17 @@ def enviar_email(destinatario, asunto, cuerpo):
         print(f"Error al enviar a {destinatario}: {e}")
         return False
 
+
 def ejecutar_campana():
     print("--- Iniciando barrido de prospectos ---")
     enviados = cargar_historial()
-    
+
     archivo_prospectos = None
     for posible in ["prospectos_storecheck.csv", "leads_globales.csv", "prospectos.csv", "campana_emails_li.csv"]:
         if os.path.exists(posible):
             archivo_prospectos = posible
             break
-            
+
     if not archivo_prospectos:
         print("Error: No se encontró ningún archivo CSV de prospectos en la carpeta.")
         return
@@ -105,45 +110,44 @@ def ejecutar_campana():
 
     with open(archivo_prospectos, mode="r", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
-        
+
         if reader.fieldnames:
-            fieldnames_lower = [fn.lower() for fn in reader.fieldnames]
+            fieldnames_lower = [fn.strip().lower() for fn in reader.fieldnames if fn]
             email_col = 'email' if 'email' in fieldnames_lower else ('mail' if 'mail' in fieldnames_lower else None)
         else:
             email_col = None
-        
+
         if not email_col:
-            print(f"Error: El CSV no tiene una columna de correo válida ('email' o 'mail').")
+            print("Error: El CSV no tiene una columna de correo válida ('email' o 'mail').")
             return
 
         count = 0
         for row in reader:
-            row_lower = {k.lower(): v for k, v in row.items()}
+            row_lower = {k.strip().lower(): (v.strip() if v else "") for k, v in row.items() if k}
             email = row_lower.get(email_col, "").strip()
-            nombre = row_lower.get("nombre", row_lower.get("name", "emprendedor"))
-            web = row_lower.get("web", row_lower.get("sitio", "su tienda"))
-            pais = row_lower.get("pais", row_lower.get("country", "Latinoamérica"))
+            email_norm = email.lower()
+            nombre = row_lower.get("nombre") or row_lower.get("name") or "emprendedor"
+            web = row_lower.get("web") or row_lower.get("sitio") or "su tienda"
+            pais = row_lower.get("pais") or row_lower.get("country") or "Latinoamérica"
 
-            if not email or email in enviados:
+            if not email_norm or email_norm in enviados:
                 continue
 
             print(f"\nGenerando correo para {nombre} ({email})...")
             cuerpo = generar_correo(nombre, web, pais)
-            
-            # Muestra el cuerpo generado en la terminal en tiempo real
+
             print("\n" + "="*40)
             print(cuerpo)
             print("="*40 + "\n")
-            
+
             asunto = f"consulta sobre {web}"
-            
+
             if enviar_email(email, asunto, cuerpo):
                 registrar_enviado(nombre, email, web, pais, asunto)
-                enviados.add(email.lower()) # Sumar al set local para evitar duplicados en la misma corrida
+                enviados.add(email_norm)
                 print(f"-> ¡Correo enviado con éxito a {email} y registrado en el historial!")
                 count += 1
-                
-                # Pausa aleatoria inteligente (entre 20 y 45 segundos) para simular comportamiento humano y escalar sin riesgo
+
                 pausa_segura = random.randint(20, 45)
                 print(f"⏳ Pausando {pausa_segura} segundos para cuidar la reputación de la cuenta...")
                 time.sleep(pausa_segura)
@@ -151,6 +155,7 @@ def ejecutar_campana():
                 print(f"-> Falló el envío a {email}")
 
     print(f"\n--- Campaña finalizada. Total correos enviados: {count} ---")
+
 
 if __name__ == "__main__":
     ejecutar_campana()

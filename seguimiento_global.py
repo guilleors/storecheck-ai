@@ -83,7 +83,7 @@ def raspar_tienda_rapido(url):
             return None
 
         soup = BeautifulSoup(resp.text, "html.parser")
-        title = soup.title.string.strip() if soup.title else "Sin título"
+        title = soup.title.string.strip() if soup.title and soup.title.string else "Sin título"
         meta_desc = ""
         desc_tag = soup.find("meta", attrs={"name": lambda x: x and x.lower() == "description"})
         if desc_tag:
@@ -100,14 +100,30 @@ def raspar_tienda_rapido(url):
         elif "tiendanube" in html_content or "nuvemshop" in html_content:
             platform = "Tiendanube"
 
-        has_cart = bool(soup.find_all(class_=lambda x: x and "cart" in x.lower())) or "carrito" in html_content or "bag" in html_content
-        has_checkout = "checkout" in html_content or "finalizar" in html_content or "pagar" in html_content
+        # Detección precisa de elementos de carrito para evitar falsos positivos por texto suelto
+        has_cart = (
+            bool(soup.find_all(class_=lambda x: x and any(c in " ".join(x).lower() if isinstance(x, list) else x.lower() for c in ["cart", "carrito", "minicart"])))
+            or "/cart" in html_content
+            or "/carrito" in html_content
+            or "add-to-cart" in html_content
+            or "add_to_cart" in html_content
+        )
+        has_checkout = (
+            "/checkout" in html_content
+            or "finalizar compra" in html_content
+            or "iniciar compra" in html_content
+            or "proceed to checkout" in html_content
+        )
 
         gateways = []
-        if "mercadopago" in html_content: gateways.append("MercadoPago")
-        if "paypal" in html_content: gateways.append("PayPal")
-        if "stripe" in html_content: gateways.append("Stripe")
-        if "transferencia" in html_content or "transfer" in html_content: gateways.append("Transferencia Bancaria")
+        if "mercadopago" in html_content:
+            gateways.append("MercadoPago")
+        if "paypal" in html_content:
+            gateways.append("PayPal")
+        if "stripe" in html_content:
+            gateways.append("Stripe")
+        if "transferencia" in html_content or "transfer" in html_content:
+            gateways.append("Transferencia Bancaria")
 
         for script in soup(["script", "style", "nav", "footer"]):
             script.extract()
@@ -151,7 +167,6 @@ def generar_y_enviar_teaser(nombre, email_dest, web, pais, asunto_original):
     - Fragmento de texto visible en la tienda: {datos_web['snippet'][:900]}
     """
 
-    # Link inteligente con la tienda precargada en Streamlit
     link_con_tienda = f"{STREAMLIT_URL}?store={web}"
 
     prompt = f"""

@@ -67,7 +67,7 @@ def generar_correo(nombre, web, pais):
         f"Me tomé el atrevimiento de explorar {web} y noté algunos detalles de fricción en el checkout que seguramente estén interfiriendo en el flujo de ventas.\n"
         f"¿Podrá interesarte, sin compromiso, un pantallazo rápido con un par de ideas para corregirlo?\n"
         f"No dudes en responderme y te lo envío con gusto.\n"
-        f"¡Que tengas un gran día!\n"
+        f"Un abrazo\n"
         "Devolvé únicamente el correo listo para enviar con esos datos:"
     )
 

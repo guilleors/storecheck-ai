@@ -223,6 +223,31 @@ def calculate_store_metrics(scraped_data, language):
     return health_score, seo_score, speed_index, mobile_readiness
 
 
+def _format_inline_bold(text_line):
+    """Convierte **negrita** de forma segura a HTML para ReportLab."""
+    escaped = html.escape(text_line)
+    parts = escaped.split("**")
+    if len(parts) >= 3:
+        new_parts = []
+        for i, part in enumerate(parts):
+            if i % 2 == 1:
+                new_parts.append(f"<b>{part}</b>")
+            else:
+                new_parts.append(part)
+        return "".join(new_parts)
+    return escaped.replace("**", "")
+
+
+def _is_code_line(line_stripped):
+    """Detecta líneas que parecen código CSS, JSON, HTML o JS."""
+    code_markers = [
+        "{", "}", ";", "</", "<script", "<div", "const ", "let ", "var ",
+        "function ", "@media", "display:", "padding:", "margin:", "color:",
+        "background", "border", "width:", "font-", "priceCurrency", '"@context"'
+    ]
+    return any(m in line_stripped for m in code_markers)
+
+
 def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mobile, doc_type="audit"):
     """Genera un PDF corporativo adaptado al tipo de entregable ('audit' o 'playbook')."""
     buffer = io.BytesIO()
@@ -261,6 +286,15 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
         textColor=colors.HexColor('#334155'),
         spaceAfter=8
     )
+    section_heading_style = ParagraphStyle(
+        'SectionHeading',
+        parent=styles['Heading2'],
+        fontSize=13,
+        leading=18,
+        textColor=colors.HexColor('#0F172A'),
+        spaceBefore=16,
+        spaceAfter=6
+    )
     h2_style = ParagraphStyle(
         'ReportH2',
         parent=styles['Heading2'],
@@ -270,12 +304,28 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
         spaceBefore=14,
         spaceAfter=4
     )
+    code_style = ParagraphStyle(
+        'CodeBlock',
+        parent=styles['Code'],
+        fontName='Courier',
+        fontSize=8.5,
+        leading=12,
+        textColor=colors.HexColor('#0F172A'),
+        backColor=colors.HexColor('#F8FAFC'),
+        borderColor=colors.HexColor('#CBD5E1'),
+        borderWidth=0.5,
+        borderPadding=8,
+        leftIndent=8,
+        rightIndent=8,
+        spaceBefore=6,
+        spaceAfter=10,
+    )
 
     if doc_type == "playbook":
         doc_title = "StoreCheck AI — Playbook Pro de Implementación"
         section_header = "<b>Guía Técnica, Snippets y Plan de Acción</b>"
         intro_fixed_text = (
-            "Guía práctica de implementación con snippets listos para adaptar, ajustes de checkout y "
+            "Guía práctica de implementación con bloques de código listos para adaptar, ajustes de checkout y "
             "prioridades de ejecución basadas en los datos reales detectados en el sitio."
         )
     else:
@@ -314,7 +364,7 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
     story.append(Paragraph(section_header, h2_style))
     story.append(Spacer(1, 5))
     story.append(Paragraph(intro_fixed_text, body_style))
-    story.append(Spacer(1, 10))
+    story.append(Spacer(1, 8))
 
     blocks = audit_text.split("\n\n")
     cleaned_blocks = []
@@ -335,67 +385,85 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
         cleaned_blocks.append(b_clean)
 
     for block in cleaned_blocks:
-        formatted_lines = []
-        for line in block.split("\n"):
-            line = line.strip()
-            if not line:
-                continue
+        lines = [ln.strip() for ln in block.split("\n") if ln.strip()]
+        if not lines:
+            continue
 
+        # Si el bloque completo es un snippet de código (o empieza con ```)
+        if lines[0].startswith("```") or (len(lines) >= 2 and all(_is_code_line(l) or l in ["{", "}", "});", "});"] for l in lines if not l.startswith("```"))):
+            code_lines = []
+            for l in lines:
+                if l.startswith("```"):
+                    continue
+                code_lines.append(html.escape(l))
+            if code_lines:
+                story.append(Paragraph("<br/>".join(code_lines), code_style))
+            continue
+
+        formatted_lines = []
+        for line in lines:
             if re.match(r'^\|?[\s\-:]+\|[\s\-:|]+$', line):
                 continue
-
-            line = line.replace("Auditorio técnico", "Auditoría técnica")
-            line = line.replace("auditorio técnico", "auditoría técnica")
-            line = line.replace("experiencia utilizador", "experiencia de usuario")
-            line = line.replace("e varejas", "minorista / e-commerce")
-            line = line.replace("<title>", "título: ").replace("</title>", "")
-
-            if line.startswith("|") and line.endswith("|"):
+            if line.startswith("```"):
                 continue
 
-            line = re.sub(r'\$.*?\$', '', line)
-            line = line.replace('$', '')
+            # Quitar numerales Markdown sueltos al inicio (ej. "# 3. ...", "## ...")
+            line_no_hash = re.sub(r'^#+\s*', '', line).strip()
 
-            line_lower = line.lower()
+            # Quitar etiquetas sueltas de lenguaje al inicio de línea ("json", "CSS", "javascript", "html")
+            if line_no_hash.lower() in ["json", "css", "javascript", "js", "html"]:
+                continue
+
+            line_clean = line_no_hash.replace("Auditorio técnico", "Auditoría técnica")
+            line_clean = line_clean.replace("auditorio técnico", "auditoría técnica")
+            line_clean = line_clean.replace("experiencia utilizador", "experiencia de usuario")
+            line_clean = line_clean.replace("e varejas", "minorista / e-commerce")
+            line_clean = line_clean.replace("<title>", "título: ").replace("</title>", "")
+
+            if line_clean.startswith("|") and line_clean.endswith("|"):
+                continue
+
+            if doc_type == "audit":
+                line_clean = re.sub(r'\$.*?\$', '', line_clean)
+                line_clean = line_clean.replace('$', '')
+
+            # Detectar encabezados numerados principales (ej. "1. ...", "2. ...", "3. ...", "4. ...", "5. ...")
+            if re.match(r'^[1-5]\.\s+[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]', line_clean) and len(line_clean) < 85:
+                if formatted_lines:
+                    story.append(Paragraph("<br/>".join(formatted_lines), body_style))
+                    formatted_lines = []
+                story.append(Paragraph(f"<b>{html.escape(line_clean)}</b>", section_heading_style))
+                continue
+
+            line_lower = line_clean.lower()
             forced_heading = None
             if doc_type == "audit":
-                if "auditoría técnica" in line_lower and len(line) < 40:
+                if "auditoría técnica" in line_lower and len(line_clean) < 45:
                     forced_heading = "1. Auditoría técnica"
-                elif "ui/ux" in line_lower and len(line) < 45:
+                elif "ui/ux" in line_lower and len(line_clean) < 50:
                     forced_heading = "2. Análisis UI/UX y buyer journey"
-                elif "fricción" in line_lower and len(line) < 45:
+                elif "fricción" in line_lower and len(line_clean) < 55:
                     forced_heading = "3. Revisión de fricción en el proceso de compra"
-                elif "ventaja competitiva" in line_lower and len(line) < 45:
+                elif "ventaja competitiva" in line_lower and len(line_clean) < 50:
                     forced_heading = "4. Evaluación de ventaja competitiva"
-                elif "implementación" in line_lower and len(line) < 45:
+                elif "implementación" in line_lower and len(line_clean) < 50:
                     forced_heading = "5. Guía de implementación paso a paso"
 
             if forced_heading:
-                clean_line = f"<br/><b>{forced_heading}</b>"
-            else:
-                escaped = html.escape(line)
-                parts = escaped.split("**")
-                if len(parts) >= 3:
-                    new_parts = []
-                    for i, part in enumerate(parts):
-                        if i % 2 == 1:
-                            new_parts.append(f"<b>{part}</b>")
-                        else:
-                            new_parts.append(part)
-                    escaped = "".join(new_parts)
-                else:
-                    escaped = escaped.replace("**", "")
+                if formatted_lines:
+                    story.append(Paragraph("<br/>".join(formatted_lines), body_style))
+                    formatted_lines = []
+                story.append(Paragraph(f"<b>{html.escape(forced_heading)}</b>", section_heading_style))
+                continue
 
-                if escaped.startswith("- ") or escaped.startswith("* "):
-                    escaped = "• " + escaped[2:]
+            rendered_line = _format_inline_bold(line_clean)
+            if rendered_line.startswith("- ") or rendered_line.startswith("* "):
+                rendered_line = "• " + rendered_line[2:]
 
-                clean_line = escaped
-
-            formatted_lines.append(clean_line)
+            formatted_lines.append(rendered_line)
 
         if formatted_lines:
-            paragraph_html = "<br/>".join(formatted_lines)
-            story.append(Paragraph(paragraph_html, body_style))
+            story.append(Paragraph("<br/>".join(formatted_lines), body_style))
 
     doc.build(story)
     buffer.seek(0)
@@ -490,19 +558,20 @@ def build_report_text(client_instance, store_url, sd, report_language, doc_type=
         - Gateways: {', '.join(sd['payment_gateways'])}
         - Snippet: {sd['raw_text'][:1800]}
 
-        Generate an elite, highly practical Technical Implementation Playbook Pro.
+        Generate a complete, clear, and practical Technical Implementation Playbook Pro.
         STRICT RULES:
-        1. No conversational greetings or intro fluff. Start directly with section headings.
-        2. Provide concrete technical solutions tailored to this store's platform ({sd['platform']}).
-        3. Include precise code snippets (such as CSS tweaks for mobile checkout, Schema JSON-LD blocks, or cart friction fixes) formatted cleanly without markdown pipes ('|').
-        4. Write the response entirely in professional, corporate {report_language}.
-        5. Structure into 4 clean sections:
+        1. No conversational greetings or intro fluff. Do NOT use '#' markdown headings.
+        2. Write section titles cleanly on their own lines, e.g.:
            1. Diagnóstico crítico de conversión
            2. Snippets de código y optimización frontend
            3. Arquitectura del checkout y pasarelas de pago
            4. Plan de acción de 7 días para escalar
+        3. Make code snippets clean, readable, and realistic without broken template syntax or malformed arrow functions. Put each code block in its own paragraph block separated by blank lines.
+        4. Never cut off mid-list or leave an empty numbered item at the end. Complete every section thoroughly.
+        5. Write the response entirely in professional, corporate {report_language}.
         """
         system_msg = "You are an elite technical consultant and e-commerce conversion architect."
+        tokens_limit = 3400
     else:
         prompt = f"""
         You are a world-class principal e-commerce CRO consultant and an elite executive copywriter.
@@ -517,7 +586,7 @@ def build_report_text(client_instance, store_url, sd, report_language, doc_type=
 
         Provide a concise, highly professional, and deep technical audit report based strictly on these elements.
         STRICT EDITORIAL & STRUCTURAL RULES:
-        1. DO NOT include any conversational greetings, intros, or polite filler. Start generating the report directly with section headings.
+        1. DO NOT include any conversational greetings, intros, or polite filler. DO NOT use '#' characters anywhere.
         2. STRICTLY AVOID ANY REPETITION. Do not repeat sections, do not list titles in multiple foreign languages, and do not use boilerplate placeholder sentences. Every section and bullet point must contain unique, specific insights.
         3. Write the response entirely in flawless, professional, and natural corporate {report_language}. Avoid literal translations or colloquialisms.
         4. Ensure rigorous grammar, punctuation, and syntactic coherence.
@@ -530,12 +599,13 @@ def build_report_text(client_instance, store_url, sd, report_language, doc_type=
            5. Guía de implementación paso a paso
         """
         system_msg = "You are an elite corporate technical consultant and native copyeditor specializing in e-commerce optimization."
+        tokens_limit = 1800
 
     messages = [
         {"role": "system", "content": system_msg},
         {"role": "user", "content": prompt},
     ]
-    completion = call_groq_chat(client_instance, messages, temperature=0.3, max_tokens=1800)
+    completion = call_groq_chat(client_instance, messages, temperature=0.3, max_tokens=tokens_limit)
     return completion.choices[0].message.content
 
 

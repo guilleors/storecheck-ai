@@ -388,6 +388,117 @@ try:
 except Exception:
     client = None
 
+
+def call_groq_chat(client_instance, messages, temperature=0.7, max_tokens=1600):
+    if not client_instance:
+        raise Exception("El cliente de servicio no está disponible en este momento.")
+
+    preferred_models = [
+        "llama-3.3-70b-versatile",
+        "qwen/qwen3.8-27b",
+        "llama-3.1-8b-instant",
+    ]
+
+    last_error = None
+    for model_id in preferred_models:
+        try:
+            response = client_instance.chat.completions.create(
+                messages=messages,
+                model=model_id,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+            return response
+        except Exception as e:
+            last_error = e
+            continue
+
+    try:
+        models_response = client_instance.models.list()
+        all_models = [m.id for m in models_response.data]
+        excluded_keywords = ["guard", "classifier", "tool", "moderation", "vision"]
+        chat_models = [
+            m_id
+            for m_id in all_models
+            if m_id not in preferred_models and not any(kw in m_id.lower() for kw in excluded_keywords)
+        ]
+        for model_id in chat_models[:3]:
+            try:
+                return client_instance.chat.completions.create(
+                    messages=messages,
+                    model=model_id,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+            except Exception as e:
+                last_error = e
+                continue
+    except Exception as e:
+        last_error = e
+
+    raise Exception(f"Error de comunicación con el servicio: {last_error}")
+
+
+def build_report_text(client_instance, store_url, sd, report_language, doc_type="audit", comp_info=""):
+    if doc_type == "playbook":
+        prompt = f"""
+        You are a master e-commerce CRO architect and senior full-stack developer.
+        Based on the store data from {store_url}:{comp_info}
+        - Platform: {sd['platform']}
+        - Title: {sd['title']}
+        - Cart/Checkout Ready: {sd['has_cart_button']} / {sd['has_checkout_link']}
+        - Gateways: {', '.join(sd['payment_gateways'])}
+        - Snippet: {sd['raw_text'][:1800]}
+
+        Generate an elite, highly practical Technical Implementation Playbook Pro.
+        STRICT RULES:
+        1. No conversational greetings or intro fluff. Start directly with section headings.
+        2. Provide concrete technical solutions tailored to this store's platform ({sd['platform']}).
+        3. Include precise code snippets (such as CSS tweaks for mobile checkout, Schema JSON-LD blocks, or cart friction fixes) formatted cleanly without markdown pipes ('|').
+        4. Write the response entirely in professional, corporate {report_language}.
+        5. Structure into 4 clean sections:
+           1. Diagnóstico crítico de conversión
+           2. Snippets de código y optimización frontend
+           3. Arquitectura del checkout y pasarelas de pago
+           4. Plan de acción de 7 días para escalar
+        """
+        system_msg = "You are an elite technical consultant and e-commerce conversion architect."
+    else:
+        prompt = f"""
+        You are a world-class principal e-commerce CRO consultant and an elite executive copywriter.
+        Analyze the store data from {store_url}:{comp_info}
+        - Platform: {sd['platform']}
+        - Title: {sd['title']}
+        - Meta Description: {sd['meta_description']}
+        - Cart Button Detected: {sd['has_cart_button']}
+        - Checkout Flow Link Detected: {sd['has_checkout_link']}
+        - Payment Gateways Found: {', '.join(sd['payment_gateways'])}
+        - Content Snippet: {sd['raw_text'][:1800]}
+
+        Provide a concise, highly professional, and deep technical audit report based strictly on these elements.
+        STRICT EDITORIAL & STRUCTURAL RULES:
+        1. DO NOT include any conversational greetings, intros, or polite filler. Start generating the report directly with section headings.
+        2. STRICTLY AVOID ANY REPETITION. Do not repeat sections, do not list titles in multiple foreign languages, and do not use boilerplate placeholder sentences. Every section and bullet point must contain unique, specific insights.
+        3. Write the response entirely in flawless, professional, and natural corporate {report_language}. Avoid literal translations or colloquialisms.
+        4. Ensure rigorous grammar, punctuation, and syntactic coherence.
+        5. DO NOT use Markdown tables (pipes like '|'). Format all findings as clean, structured bullet points or paragraphs.
+        6. Structure the report into exactly 5 concise sections:
+           1. Auditoría técnica
+           2. Análisis UI/UX y buyer journey
+           3. Revisión de fricción en el proceso de compra
+           4. Evaluación de ventaja competitiva
+           5. Guía de implementación paso a paso
+        """
+        system_msg = "You are an elite corporate technical consultant and native copyeditor specializing in e-commerce optimization."
+
+    messages = [
+        {"role": "system", "content": system_msg},
+        {"role": "user", "content": prompt},
+    ]
+    completion = call_groq_chat(client_instance, messages, temperature=0.3, max_tokens=1800)
+    return completion.choices[0].message.content
+
+
 # --- CAPTURAR URL DESDE EL EMAIL AUTOMÁTICO ---
 query_store = st.query_params.get("store", "")
 if query_store and "store_url_input" not in st.session_state:
@@ -559,57 +670,6 @@ i18n_ui = {
 
 t = i18n_ui[ui_language]
 
-
-def call_groq_chat(client_instance, messages, temperature=0.7, max_tokens=1600):
-    if not client_instance:
-        raise Exception("El cliente de servicio no está disponible en este momento.")
-
-    preferred_models = [
-        "llama-3.3-70b-versatile",
-        "qwen/qwen3.8-27b",
-        "llama-3.1-8b-instant",
-    ]
-
-    last_error = None
-    for model_id in preferred_models:
-        try:
-            response = client_instance.chat.completions.create(
-                messages=messages,
-                model=model_id,
-                temperature=temperature,
-                max_tokens=max_tokens,
-            )
-            return response
-        except Exception as e:
-            last_error = e
-            continue
-
-    try:
-        models_response = client_instance.models.list()
-        all_models = [m.id for m in models_response.data]
-        excluded_keywords = ["guard", "classifier", "tool", "moderation", "vision"]
-        chat_models = [
-            m_id
-            for m_id in all_models
-            if m_id not in preferred_models and not any(kw in m_id.lower() for kw in excluded_keywords)
-        ]
-        for model_id in chat_models[:3]:
-            try:
-                return client_instance.chat.completions.create(
-                    messages=messages,
-                    model=model_id,
-                    temperature=temperature,
-                    max_tokens=max_tokens,
-                )
-            except Exception as e:
-                last_error = e
-                continue
-    except Exception as e:
-        last_error = e
-
-    raise Exception(f"Error de comunicación con el servicio: {last_error}")
-
-
 # Interfaz Principal
 st.markdown(
     f"<h1 style='text-align: center; margin-bottom: 0px;'>⚡ {t['title']}</h1>",
@@ -751,7 +811,11 @@ if run_audit:
             status_text.empty()
             st.error(f"❌ {e}")
 
-if "preview_result" in st.session_state and "scraped_data" in st.session_state:
+has_session_audit = "preview_result" in st.session_state and "scraped_data" in st.session_state
+is_paid = st.query_params.get("success", "false").lower() == "true"
+is_playbook_paid = st.query_params.get("success_playbook", "false").lower() == "true"
+
+if has_session_audit:
     st.markdown("---")
 
     health, seo, speed, mobile = calculate_store_metrics(st.session_state["scraped_data"], ui_language)
@@ -798,9 +862,6 @@ if "preview_result" in st.session_state and "scraped_data" in st.session_state:
         ],
     )
 
-    is_paid = st.query_params.get("success", "false").lower() == "true"
-    is_playbook_paid = st.query_params.get("success_playbook", "false").lower() == "true"
-
     if is_paid or is_playbook_paid:
         st.success("🎉 ¡Pago verificado con éxito! Ya podés descargar el PDF de tu reporte.")
 
@@ -812,40 +873,9 @@ if "preview_result" in st.session_state and "scraped_data" in st.session_state:
                     csd = st.session_state["comp_scraped_data"]
                     comp_info = f"\n- COMPETITOR STORE: {st.session_state['competitor_url']}\n  Platform: {csd['platform']}\n  Title: {csd['title']}"
 
-                full_report_prompt = f"""
-                    You are a world-class principal e-commerce CRO consultant and an elite executive copywriter.
-                    Analyze the store data from {st.session_state['store_url']}:{comp_info}
-                    - Platform: {sd['platform']}
-                    - Title: {sd['title']}
-                    - Meta Description: {sd['meta_description']}
-                    - Cart Button Detected: {sd['has_cart_button']}
-                    - Checkout Flow Link Detected: {sd['has_checkout_link']}
-                    - Payment Gateways Found: {', '.join(sd['payment_gateways'])}
-                    - Content Snippet: {sd['raw_text'][:1800]}
-
-                    Provide a concise, highly professional, and deep technical audit report based strictly on these elements.
-                    STRICT EDITORIAL & STRUCTURAL RULES:
-                    1. DO NOT include any conversational greetings, intros, or polite filler. Start generating the report directly with section headings.
-                    2. STRICTLY AVOID ANY REPETITION. Do not repeat sections, do not list titles in multiple foreign languages, and do not use boilerplate placeholder sentences. Every section and bullet point must contain unique, specific insights.
-                    3. Write the response entirely in flawless, professional, and natural corporate {report_language}. Avoid literal translations or colloquialisms.
-                    4. Ensure rigorous grammar, punctuation, and syntactic coherence.
-                    5. DO NOT use Markdown tables (pipes like '|'). Format all findings as clean, structured bullet points or paragraphs.
-                    6. Structure the report into exactly 5 concise sections:
-                       1. Auditoría técnica
-                       2. Análisis UI/UX y buyer journey
-                       3. Revisión de fricción en el proceso de compra
-                       4. Evaluación de ventaja competitiva
-                       5. Guía de implementación paso a paso
-                    """
-                full_messages = [
-                    {
-                        "role": "system",
-                        "content": "You are an elite corporate technical consultant and native copyeditor specializing in e-commerce optimization.",
-                    },
-                    {"role": "user", "content": full_report_prompt},
-                ]
-                full_completion = call_groq_chat(client, full_messages, temperature=0.3, max_tokens=1800)
-                st.session_state["full_report_result"] = full_completion.choices[0].message.content
+                st.session_state["full_report_result"] = build_report_text(
+                    client, st.session_state["store_url"], sd, report_language, doc_type="audit", comp_info=comp_info
+                )
 
         pdf_bytes = generate_pdf_report(
             st.session_state["store_url"],
@@ -877,34 +907,9 @@ if "preview_result" in st.session_state and "scraped_data" in st.session_state:
                         csd = st.session_state["comp_scraped_data"]
                         comp_info = f"\n- COMPETITOR STORE: {st.session_state['competitor_url']}\n  Platform: {csd['platform']}\n  Title: {csd['title']}"
 
-                    playbook_prompt = f"""
-                        You are a master e-commerce CRO architect and senior full-stack developer.
-                        Based on the store data from {st.session_state['store_url']}:{comp_info}
-                        - Platform: {sd['platform']}
-                        - Title: {sd['title']}
-                        - Cart/Checkout Ready: {sd['has_cart_button']} / {sd['has_checkout_link']}
-                        - Gateways: {', '.join(sd['payment_gateways'])}
-                        - Snippet: {sd['raw_text'][:1800]}
-
-                        Generate an elite, highly practical Technical Implementation Playbook Pro.
-                        STRICT RULES:
-                        1. No conversational greetings or intro fluff. Start directly with section headings.
-                        2. Provide concrete technical solutions tailored to this store's platform ({sd['platform']}).
-                        3. Include precise code snippets (such as CSS tweaks for mobile checkout, Schema JSON-LD blocks, or cart friction fixes) formatted cleanly without markdown pipes ('|').
-                        4. Write the response entirely in professional, corporate {report_language}.
-                        5. Structure into 4 clean sections:
-                           1. Diagnóstico crítico de conversión
-                           2. Snippets de código y optimización frontend
-                           3. Arquitectura del checkout y pasarelas de pago
-                           4. Plan de acción de 7 días para escalar
-                        """
-
-                    playbook_messages = [
-                        {"role": "system", "content": "You are an elite technical consultant and e-commerce conversion architect."},
-                        {"role": "user", "content": playbook_prompt},
-                    ]
-                    playbook_completion = call_groq_chat(client, playbook_messages, temperature=0.3, max_tokens=1800)
-                    st.session_state["playbook_report_result"] = playbook_completion.choices[0].message.content
+                    st.session_state["playbook_report_result"] = build_report_text(
+                        client, st.session_state["store_url"], sd, report_language, doc_type="playbook", comp_info=comp_info
+                    )
 
             pdf_playbook_bytes = generate_pdf_report(
                 st.session_state["store_url"],
@@ -935,6 +940,46 @@ if "preview_result" in st.session_state and "scraped_data" in st.session_state:
 
         st.link_button(
             label=t["btn_full_report"], url=checkout_url, use_container_width=True
+        )
+
+elif is_paid or is_playbook_paid:
+    st.markdown("---")
+    st.success("🎉 ¡Pago verificado con éxito!")
+
+    default_url = st.session_state.get("store_url") or st.query_params.get("store", "")
+    recovery_url = st.text_input("URL de la tienda", value=default_url, placeholder="https://mitienda.com", key="recovery_store_url")
+    recovery_lang = st.selectbox(
+        t["report_lang_label"],
+        ["Español", "English", "Português", "Italiano", "Français", "中文 (Chinese)"],
+        key="recovery_report_lang"
+    )
+
+    if st.button("Generar PDF", use_container_width=True, key="btn_generate_recovery_pdf"):
+        if not recovery_url.strip():
+            st.warning(t["error_url"])
+        else:
+            with st.spinner("Generando informe..."):
+                ok_scrape, rec_data = scrape_store_data(recovery_url.strip())
+                if not ok_scrape:
+                    st.error(f"❌ {rec_data}")
+                else:
+                    h_val, s_val, sp_val, m_val = calculate_store_metrics(rec_data, recovery_lang)
+                    doc_kind = "playbook" if is_playbook_paid else "audit"
+                    report_body = build_report_text(client, recovery_url.strip(), rec_data, recovery_lang, doc_type=doc_kind)
+                    st.session_state["recovery_pdf_bytes"] = generate_pdf_report(
+                        recovery_url.strip(), report_body, recovery_lang, h_val, s_val, sp_val, m_val, doc_type=doc_kind
+                    )
+                    st.session_state["recovery_pdf_name"] = (
+                        "StoreCheck_AI_Playbook_Pro.pdf" if is_playbook_paid else "StoreCheck_AI_Corporate_Report.pdf"
+                    )
+
+    if "recovery_pdf_bytes" in st.session_state:
+        st.download_button(
+            label=t["btn_download_unlocked"],
+            data=st.session_state["recovery_pdf_bytes"],
+            file_name=st.session_state.get("recovery_pdf_name", "StoreCheck_AI_Corporate_Report.pdf"),
+            mime="application/pdf",
+            use_container_width=True,
         )
 
 st.markdown("---")

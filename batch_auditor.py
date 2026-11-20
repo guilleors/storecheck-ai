@@ -28,6 +28,15 @@ def cargar_historial():
     return enviados
 
 
+def extraer_primer_nombre(nombre_crudo):
+    if not nombre_crudo:
+        return "emprendedor"
+    limpio = nombre_crudo.strip()
+    if not limpio or limpio.lower() in ["equipo", "team", "emprendedor", "contacto"]:
+        return limpio if limpio else "emprendedor"
+    return limpio.split()[0]
+
+
 def registrar_enviado(nombre, email, web, pais, asunto):
     print(f"DEBUG: Intentando abrir/crear {HISTORIAL_FILE}...")
     file_exists = os.path.exists(HISTORIAL_FILE) and os.path.getsize(HISTORIAL_FILE) > 0
@@ -43,6 +52,8 @@ def registrar_enviado(nombre, email, web, pais, asunto):
 
 
 def generar_correo(nombre, web, pais):
+    saludo = extraer_primer_nombre(nombre)
+
     system_prompt = (
         "Sos un desarrollador web independiente escribiendo un mail de contacto en frío. "
         "Tu única tarea es adaptar el texto de ejemplo al nombre y la web del prospecto, "
@@ -51,8 +62,8 @@ def generar_correo(nombre, web, pais):
     )
 
     user_prompt = (
-        f"Tomá como base este texto exacto y adaptalo completo para {nombre} que está a cargo de {web} (ubicado en {pais}):\n\n"
-        f"Hola, {nombre}, ¿cómo estás?\n"
+        f"Tomá como base este texto exacto y adaptalo completo para {saludo} que está a cargo de {web} (ubicado en {pais}):\n\n"
+        f"Hola, {saludo}, ¿cómo estás?\n"
         f"Me tomé el atrevimiento de explorar {web} y noté algunos detalles de fricción en el checkout que seguramente estén interfiriendo en el flujo de ventas.\n"
         f"¿Podrá interesarte, sin compromiso, un pantallazo rápido con un par de ideas para corregirlo?\n"
         f"No dudes en responderme y te lo envío con gusto.\n"
@@ -60,16 +71,30 @@ def generar_correo(nombre, web, pais):
         "Devolvé únicamente el correo listo para enviar con esos datos:"
     )
 
-    response = client.chat.completions.create(
-        model=config.GROQ_MODEL,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
-        temperature=0.2,
-        max_tokens=300
-    )
-    return response.choices[0].message.content.strip()
+    modelos = [
+        getattr(config, "GROQ_MODEL", None) or "llama-3.3-70b-versatile",
+        "qwen/qwen3.8-27b",
+    ]
+    modelos_unicos = list(dict.fromkeys(modelos))
+
+    last_error = None
+    for modelo in modelos_unicos:
+        try:
+            response = client.chat.completions.create(
+                model=modelo,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                temperature=0.2,
+                max_tokens=300
+            )
+            return response.choices[0].message.content.strip()
+        except Exception as e:
+            last_error = e
+            continue
+
+    raise Exception(f"No se pudo generar el correo con Groq: {last_error}")
 
 
 def enviar_email(destinatario, asunto, cuerpo):
@@ -134,7 +159,11 @@ def ejecutar_campana():
                 continue
 
             print(f"\nGenerando correo para {nombre} ({email})...")
-            cuerpo = generar_correo(nombre, web, pais)
+            try:
+                cuerpo = generar_correo(nombre, web, pais)
+            except Exception as e:
+                print(f"-> Error generando correo para {email}: {e}")
+                continue
 
             print("\n" + "="*40)
             print(cuerpo)

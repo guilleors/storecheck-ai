@@ -224,14 +224,53 @@ def generar_y_enviar_teaser(nombre, email_dest, web, pais, asunto_original):
     return "ENVIADO" if exito else "ERROR_SMTP"
 
 
+def extraer_cuerpo_mensaje(msg):
+    """Extrae el texto legible de un mensaje de correo (priorizando text/plain y con fallback a text/html)."""
+    cuerpo_cliente = ""
+    if msg.is_multipart():
+        for part in msg.walk():
+            content_type = part.get_content_type()
+            disp = str(part.get("Content-Disposition") or "").lower()
+            if "attachment" in disp:
+                continue
+            if content_type == "text/plain":
+                payload = part.get_payload(decode=True)
+                if payload:
+                    charset = part.get_content_charset() or "utf-8"
+                    cuerpo_cliente = payload.decode(charset, errors="ignore").strip()
+                    if cuerpo_cliente:
+                        return cuerpo_cliente
+
+        for part in msg.walk():
+            content_type = part.get_content_type()
+            disp = str(part.get("Content-Disposition") or "").lower()
+            if "attachment" in disp:
+                continue
+            if content_type == "text/html":
+                payload = part.get_payload(decode=True)
+                if payload:
+                    charset = part.get_content_charset() or "utf-8"
+                    raw_html = payload.decode(charset, errors="ignore")
+                    cuerpo_cliente = BeautifulSoup(raw_html, "html.parser").get_text(" ", strip=True)
+                    if cuerpo_cliente:
+                        return cuerpo_cliente
+    else:
+        payload = msg.get_payload(decode=True)
+        if payload:
+            charset = msg.get_content_charset() or "utf-8"
+            cuerpo_cliente = payload.decode(charset, errors="ignore").strip()
+
+    return cuerpo_cliente
+
+
 def clasificar_respuesta_cliente(texto_respuesta):
     """Usa IA para clasificar la intención del cliente en la respuesta recibida."""
     prompt = f"""
     Clasifica el siguiente mensaje de correo electrónico recibido de un prospecto de B2B.
     Responde ÚNICAMENTE con un JSON válido con una clave "categoria" que tenga uno de estos tres valores exactos:
-    - "Interesado" (si dijo que sí, pidió los apuntes, mostró interés o hizo una pregunta para avanzar).
+    - "Interesado" (si dijo que sí, confirmó con algo breve como "dale", "dale!", "ok", "sí", "si", "de una", "mandá", "pasame", pidió el pantallazo/apuntes, mostró interés o hizo una pregunta para avanzar).
     - "No interesado" (si dijo que no le interesa, pidió que no le escribas o rechazó la oferta).
-    - "Otro" (si es una respuesta ambigua o fuera de contexto).
+    - "Otro" (si es una respuesta ambigua, fuera de contexto, automática o de rebote).
 
     Mensaje del cliente:
     \"\"\"{texto_respuesta}\"\"\"
@@ -293,15 +332,7 @@ def detectar_respuestas_gmail(filas):
                         es_posterior = True
 
                 if es_posterior:
-                    cuerpo_cliente = ""
-                    if msg.is_multipart():
-                        for part in msg.walk():
-                            if part.get_content_type() == "text/plain":
-                                cuerpo_cliente = part.get_payload(decode=True).decode(errors="ignore")
-                                break
-                    else:
-                        cuerpo_cliente = msg.get_payload(decode=True).decode(errors="ignore")
-
+                    cuerpo_cliente = extraer_cuerpo_mensaje(msg)
                     intencion = clasificar_respuesta_cliente(cuerpo_cliente)
 
                     if intencion == "Interesado":

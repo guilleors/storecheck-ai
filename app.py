@@ -225,7 +225,7 @@ def calculate_store_metrics(scraped_data, language):
 
 def _format_inline_bold(text_line):
     """Convierte **negrita** de forma segura a HTML para ReportLab."""
-    escaped = html.escape(text_line)
+    escaped = html.escape(text_line.replace("`", ""))
     parts = escaped.split("**")
     if len(parts) >= 3:
         new_parts = []
@@ -236,6 +236,15 @@ def _format_inline_bold(text_line):
                 new_parts.append(part)
         return "".join(new_parts)
     return escaped.replace("**", "")
+
+
+def _clean_code_line(line_str):
+    """Limpia artefactos comunes de salida de LLM dentro de bloques de código."""
+    cleaned = line_str.strip()
+    cleaned = re.sub(r'#([0-9a-fA-F]{7})\b', r'#\1'[:7], cleaned)
+    cleaned = cleaned.replace("$0=>\\{$", "() => {")
+    cleaned = cleaned.replace("\\${", "${")
+    return cleaned
 
 
 def _is_code_line(line_stripped):
@@ -349,13 +358,17 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
         [Paragraph("Optimización Móvil", body_style), Paragraph(f"{mobile}", body_style)],
     ]
 
-    t_obj = Table(data_table, colWidths=[250, 254])
+    t_obj = Table(data_table, colWidths=[252, 252])
     t_obj.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#F1F5F9')),
-        ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#E2E8F0')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.HexColor('#0F172A')),
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('ALIGN', (1, 0), (1, -1), 'LEFT'),
         ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-        ('TOPPADDING', (0, 0), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 7),
+        ('TOPPADDING', (0, 0), (-1, -1), 7),
+        ('LEFTPADDING', (0, 0), (-1, -1), 10),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 10),
         ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#CBD5E1')),
     ]))
 
@@ -377,6 +390,9 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
             continue
         if any(b_lower.startswith(prefix) for prefix in ["hola", "aquí tienes", "después de analizar", "estimado", "presento"]):
             continue
+        # Evita líneas numéricas sueltas o cortadas al final (ej: "3" o "3.")
+        if re.match(r'^\d+\.?$', b_clean):
+            continue
 
         snippet_key = b_lower[:70]
         if snippet_key in seen_snippets:
@@ -385,7 +401,7 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
         cleaned_blocks.append(b_clean)
 
     for block in cleaned_blocks:
-        lines = [ln.strip() for ln in block.split("\n") if ln.strip()]
+        lines = [ln.strip() for ln in block.split("\n") if ln.strip() and not re.match(r'^\d+\.?$', ln.strip())]
         if not lines:
             continue
 
@@ -394,7 +410,7 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
             for l in lines:
                 if l.startswith("```"):
                     continue
-                code_lines.append(html.escape(l))
+                code_lines.append(html.escape(_clean_code_line(l)))
             if code_lines:
                 story.append(Paragraph("<br/>".join(code_lines), code_style))
             continue
@@ -416,6 +432,7 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
             line_clean = line_clean.replace("experiencia utilizador", "experiencia de usuario")
             line_clean = line_clean.replace("e varejas", "minorista / e-commerce")
             line_clean = line_clean.replace("<title>", "título: ").replace("</title>", "")
+            line_clean = line_clean.replace("`", "")
 
             if line_clean.startswith("|") and line_clean.endswith("|"):
                 continue
@@ -562,12 +579,13 @@ def build_report_text(client_instance, store_url, sd, report_language, doc_type=
            2. Snippets de código y optimización frontend
            3. Arquitectura del checkout y pasarelas de pago
            4. Plan de acción de 7 días para escalar
-        3. Make code snippets clean, readable, and realistic without broken template syntax or malformed arrow functions. Put each code block in its own paragraph block separated by blank lines.
-        4. Never cut off mid-list or leave an empty numbered item at the end. Complete every section thoroughly.
-        5. Write the response entirely in professional, corporate {report_language}.
+        3. Every JS/CSS/HTML/JSON code block must be syntactically valid and clean (valid 6-digit hex colors like #3b0764, proper '=' assignments, valid template literals). Put each code block in its own paragraph block separated by blank lines.
+        4. Never use backticks (`) inside prose or bullet points.
+        5. Never cut off mid-sentence or leave a trailing number at the end. Complete every section and bullet point cleanly.
+        6. Write the response entirely in professional, corporate {report_language}.
         """
         system_msg = "You are an elite technical consultant and e-commerce conversion architect."
-        tokens_limit = 3400
+        tokens_limit = 4500
     else:
         prompt = f"""
         You are a world-class principal e-commerce CRO consultant and an elite executive copywriter.
@@ -595,13 +613,13 @@ def build_report_text(client_instance, store_url, sd, report_language, doc_type=
            5. Guía de implementación paso a paso
         """
         system_msg = "You are an elite corporate technical consultant and native copyeditor specializing in e-commerce optimization."
-        tokens_limit = 1800
+        tokens_limit = 2000
 
     messages = [
         {"role": "system", "content": system_msg},
         {"role": "user", "content": prompt},
     ]
-    completion = call_groq_chat(client_instance, messages, temperature=0.3, max_tokens=tokens_limit)
+    completion = call_groq_chat(client_instance, messages, temperature=0.25, max_tokens=tokens_limit)
     return completion.choices[0].message.content
 
 

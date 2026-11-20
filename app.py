@@ -539,6 +539,86 @@ def build_report_text(client_instance, store_url, sd, report_language, doc_type=
     return completion.choices[0].message.content
 
 
+def render_playbook_section(
+    store_url,
+    report_lang,
+    is_playbook_already_paid,
+    redirect_base_url,
+    scraped_data=None,
+    metrics=None,
+    comp_info="",
+):
+    """Muestra la sección del Playbook Pro ($150 USD) y su descarga o enlace de pago."""
+    st.markdown("---")
+    st.markdown("### 🗺️ Playbook de Implementación Pro ($150 USD)")
+    st.info(
+        "Obtené los snippets de código exactos, configuraciones de SEO y correcciones UI/UX listas para integrar, "
+        "basadas exclusivamente en los hallazgos de tu auditoría oficial."
+    )
+
+    if is_playbook_already_paid:
+        st.success(
+            "🎉 ¡Pago del Playbook Pro verificado con éxito! "
+            "Tu guía técnica de implementación y snippets a medida ya están listos."
+        )
+
+        if "playbook_report_result" not in st.session_state or st.session_state.get("playbook_store") != store_url:
+            with st.spinner("🤖 Compilando Playbook Pro con snippets de código y optimizaciones CRO avanzadas..."):
+                sd_to_use = scraped_data
+                if not sd_to_use:
+                    ok_s, d_s = scrape_store_data(store_url)
+                    if not ok_s:
+                        st.error(f"❌ {d_s}")
+                        return
+                    sd_to_use = d_s
+
+                st.session_state["playbook_report_result"] = build_report_text(
+                    client, store_url, sd_to_use, report_lang, doc_type="playbook", comp_info=comp_info
+                )
+                st.session_state["playbook_store"] = store_url
+
+        if metrics:
+            h_val, s_val, sp_val, m_val = metrics
+        else:
+            sd_m = scraped_data
+            if not sd_m:
+                ok_m, d_m = scrape_store_data(store_url)
+                sd_m = d_m if ok_m else {"platform": "", "title": "", "meta_description": "", "has_cart_button": False, "has_checkout_link": False, "payment_gateways": [], "raw_text": ""}
+            h_val, s_val, sp_val, m_val = calculate_store_metrics(sd_m, report_lang)
+
+        pdf_playbook_bytes = generate_pdf_report(
+            store_url,
+            st.session_state["playbook_report_result"],
+            report_lang,
+            h_val,
+            s_val,
+            sp_val,
+            m_val,
+            doc_type="playbook",
+        )
+
+        st.download_button(
+            label="📥 Descargar mi Playbook Pro de Implementación (PDF)",
+            data=pdf_playbook_bytes,
+            file_name="StoreCheck_AI_Playbook_Pro.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+        )
+    else:
+        playbook_checkout_url = build_checkout_url(
+            "https://storecheck-ai.lemonsqueezy.com/checkout/buy/c88fd3da-a0e7-4319-821a-f126d584d96e",
+            redirect_base_url,
+            store_url,
+            "?success=true&success_playbook=true",
+        )
+
+        st.link_button(
+            label="💳 Pagar $150 USD y Activar Playbook Pro",
+            url=playbook_checkout_url,
+            use_container_width=True,
+        )
+
+
 # --- CAPTURAR URL DESDE QUERY PARAMS O ÚLTIMA TIENDA GUARDADA ---
 query_store = normalize_store_url(st.query_params.get("store", ""))
 if query_store and "store_url_input" not in st.session_state:
@@ -727,7 +807,19 @@ st.markdown("---")
 def reset_callback():
     st.session_state["store_url_input"] = ""
     st.session_state["competitor_url_input"] = ""
-    for key in ["preview_result", "scraped_data", "store_url", "full_report_result", "playbook_report_result", "comp_scraped_data", "competitor_url", "auto_pdf_bytes", "auto_pdf_name", "auto_pdf_store"]:
+    for key in [
+        "preview_result",
+        "scraped_data",
+        "store_url",
+        "full_report_result",
+        "playbook_report_result",
+        "playbook_store",
+        "comp_scraped_data",
+        "competitor_url",
+        "auto_pdf_bytes",
+        "auto_pdf_name",
+        "auto_pdf_store",
+    ]:
         if key in st.session_state:
             del st.session_state[key]
 
@@ -846,7 +938,14 @@ if run_audit:
                 if "comp_scraped_data" in st.session_state:
                     del st.session_state["comp_scraped_data"]
 
-            for key_to_del in ["full_report_result", "playbook_report_result", "auto_pdf_bytes", "auto_pdf_name", "auto_pdf_store"]:
+            for key_to_del in [
+                "full_report_result",
+                "playbook_report_result",
+                "playbook_store",
+                "auto_pdf_bytes",
+                "auto_pdf_name",
+                "auto_pdf_store",
+            ]:
                 if key_to_del in st.session_state:
                     del st.session_state[key_to_del]
 
@@ -941,53 +1040,20 @@ if has_session_audit:
             use_container_width=True,
         )
 
-        st.markdown("---")
-        st.markdown("### 🗺️ Playbook de Implementación Pro ($150 USD)")
-        st.info("Obtené los snippets de código exactos, configuraciones de SEO y correcciones UI/UX listas para integrar, basadas exclusivamente en los hallazgos de tu auditoría oficial.")
+        comp_info_pb = ""
+        if "comp_scraped_data" in st.session_state:
+            csd = st.session_state["comp_scraped_data"]
+            comp_info_pb = f"\n- COMPETITOR STORE: {st.session_state['competitor_url']}\n  Platform: {csd['platform']}\n  Title: {csd['title']}"
 
-        if is_playbook_paid:
-            st.success("🎉 ¡Pago del Playbook Pro verificado con éxito! Tu guía técnica de implementación y snippets a medida ya están listos.")
-
-            if "playbook_report_result" not in st.session_state:
-                with st.spinner("🤖 Compilando Playbook Pro con snippets de código y optimizaciones CRO avanzadas..."):
-                    sd = st.session_state["scraped_data"]
-                    comp_info = ""
-                    if "comp_scraped_data" in st.session_state:
-                        csd = st.session_state["comp_scraped_data"]
-                        comp_info = f"\n- COMPETITOR STORE: {st.session_state['competitor_url']}\n  Platform: {csd['platform']}\n  Title: {csd['title']}"
-
-                    st.session_state["playbook_report_result"] = build_report_text(
-                        client, active_store_url, sd, report_language, doc_type="playbook", comp_info=comp_info
-                    )
-
-            pdf_playbook_bytes = generate_pdf_report(
-                active_store_url,
-                st.session_state["playbook_report_result"],
-                report_language,
-                health, seo, speed, mobile,
-                doc_type="playbook",
-            )
-
-            st.download_button(
-                label="📥 Descargar mi Playbook Pro de Implementación (PDF)",
-                data=pdf_playbook_bytes,
-                file_name="StoreCheck_AI_Playbook_Pro.pdf",
-                mime="application/pdf",
-                use_container_width=True,
-            )
-        else:
-            playbook_checkout_url = build_checkout_url(
-                "https://storecheck-ai.lemonsqueezy.com/checkout/buy/c88fd3da-a0e7-4319-821a-f126d584d96e",
-                app_redirect_base,
-                active_store_url,
-                "?success=true&success_playbook=true",
-            )
-
-            st.link_button(
-                label="💳 Pagar $150 USD y Activar Playbook Pro",
-                url=playbook_checkout_url,
-                use_container_width=True,
-            )
+        render_playbook_section(
+            store_url=active_store_url,
+            report_lang=report_language,
+            is_playbook_already_paid=is_playbook_paid,
+            redirect_base_url=app_redirect_base,
+            scraped_data=st.session_state["scraped_data"],
+            metrics=(health, seo, speed, mobile),
+            comp_info=comp_info_pb,
+        )
 
     else:
         checkout_url = build_checkout_url(
@@ -1039,6 +1105,13 @@ elif is_paid or is_playbook_paid:
                 mime="application/pdf",
                 use_container_width=True,
             )
+
+        render_playbook_section(
+            store_url=target_store_url,
+            report_lang=target_lang,
+            is_playbook_already_paid=is_playbook_paid,
+            redirect_base_url=app_redirect_base,
+        )
     else:
         st.info("Ingresá la URL de la tienda auditada para generar tu PDF:")
         fallback_url = st.text_input(

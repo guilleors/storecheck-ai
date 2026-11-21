@@ -223,23 +223,9 @@ def calculate_store_metrics(scraped_data, language):
     return health_score, seo_score, speed_index, mobile_readiness
 
 
-def _clean_prose_line(text_line):
-    """Limpia sintaxis de LaTeX suelta, backticks y comillas desparejas en texto de prosa."""
-    cleaned = text_line.replace("`", "")
-    cleaned = re.sub(r"\$A/B\$", "A/B", cleaned, flags=re.IGNORECASE)
-    cleaned = cleaned.replace("$", "")
-    cleaned = re.sub(
-        r"'(orders|order_items|total|id|user_id|status|currency|created_at|updated_at|product_id|qty|price)'",
-        r"\1",
-        cleaned,
-    )
-    cleaned = re.sub(r"'(/?[a-zA-Z0-9_/-]+)'(?=[)\s.,;:])", r"\1", cleaned)
-    return cleaned.strip()
-
-
 def _format_inline_bold(text_line):
     """Convierte **negrita** de forma segura a HTML para ReportLab."""
-    escaped = html.escape(_clean_prose_line(text_line))
+    escaped = html.escape(text_line.replace("`", ""))
     parts = escaped.split("**")
     if len(parts) >= 3:
         new_parts = []
@@ -253,15 +239,11 @@ def _format_inline_bold(text_line):
 
 
 def _clean_code_line(line_str):
-    """Limpia y normaliza líneas de código generadas por el modelo de forma segura."""
+    """Limpia artefactos comunes de salida de LLM dentro de bloques de código."""
     cleaned = line_str.strip()
-    cleaned = re.sub(r"#([0-9a-fA-F]{7})\b", lambda m: "#" + m.group(1)[:6], cleaned)
+    cleaned = re.sub(r'#([0-9a-fA-F]{7})\b', lambda m: "#" + m.group(1)[:6], cleaned)
     cleaned = cleaned.replace("$0=>\\{$", "() => {")
     cleaned = cleaned.replace("\\${", "${")
-    cleaned = cleaned.replace("localStorage.removeltem", "localStorage.removeItem")
-    cleaned = re.sub(r"\bconst\s+([a-zA-Z_]\w*)\s+([a-zA-Z_]\w*\s*\()", r"const \1 = \2", cleaned)
-    cleaned = re.sub(r"\bconst\s+([a-zA-Z_]\w*)\s+(new\s+[a-zA-Z_]\w*\s*\()", r"const \1 = \2", cleaned)
-    cleaned = re.sub(r"\bconst\s+([a-zA-Z_]\w*)\s+(require\s*\()", r"const \1 = \2", cleaned) if "onload=" in cleaned and "this.rel='stylesheet'>" in cleaned and not cleaned.endswith('">'): cleaned = cleaned.replace("this.rel='stylesheet'>", "this.rel='stylesheet'\">") cleaned = re.sub(r"\.\.\s*product\s*\)", "...product })", cleaned)
     return cleaned
 
 
@@ -269,9 +251,9 @@ def _is_code_line(line_stripped):
     """Detecta líneas que parecen código CSS, JSON, HTML o JS."""
     code_markers = [
         "{", "}", ";", "</", "<script", "<div", "<link", "const ", "let ", "var ",
-        "function ", "export function", "@media", "display:", "padding:", "margin:",
+        "function ", "export ", "import ", "@media", "display:", "padding:", "margin:",
         "color:", "background", "border", "width:", "font-", "priceCurrency", '"@context"',
-        "localStorage", "addEventListener", "module.exports", "async function"
+        "localStorage", "addEventListener", "async function"
     ]
     return any(m in line_stripped for m in code_markers)
 
@@ -409,7 +391,7 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
             continue
         if any(b_lower.startswith(prefix) for prefix in ["hola", "aquí tienes", "después de analizar", "estimado", "presento"]):
             continue
-        if re.match(r"^\d+\.?$", b_clean):
+        if re.match(r'^\d+\.?$', b_clean):
             continue
 
         snippet_key = b_lower[:70]
@@ -419,33 +401,32 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
         cleaned_blocks.append(b_clean)
 
     for block in cleaned_blocks:
-        lines = [ln.strip() for ln in block.split("\n") if ln.strip() and not re.match(r"^\d+\.?$", ln.strip())]
+        lines = [ln.strip() for ln in block.split("\n") if ln.strip() and not re.match(r'^\d+\.?$', ln.strip())]
         if not lines:
             continue
 
-        is_fence_block = lines[0].startswith("```")
-        is_code_cluster = (not is_fence_block) and (
-            len(lines) >= 2 and all(_is_code_line(l) or l in ["{", "}", "});"] for l in lines)
+        is_fence = lines[0].startswith("```")
+        non_fence_lines = [l for l in lines if not l.startswith("```")]
+        is_code_cluster = (
+            not is_fence
+            and len(non_fence_lines) >= 2
+            and all(_is_code_line(l) or l in ["{", "}", "});", ");"] for l in non_fence_lines)
         )
 
-        if is_fence_block or is_code_cluster:
-            code_lines = []
-            for l in lines:
-                if l.startswith("```"):
-                    continue
-                code_lines.append(html.escape(_clean_code_line(l)))
+        if is_fence or is_code_cluster:
+            code_lines = [html.escape(_clean_code_line(l)) for l in non_fence_lines]
             if code_lines:
                 story.append(Paragraph("<br/>".join(code_lines), code_style))
             continue
 
         formatted_lines = []
         for line in lines:
-            if re.match(r"^\|?[\s\-:]+\|[\s\-:|]+$", line):
+            if re.match(r'^\|?[\s\-:]+\|[\s\-:|]+$', line):
                 continue
             if line.startswith("```"):
                 continue
 
-            line_no_hash = re.sub(r"^#+\s*", "", line).strip()
+            line_no_hash = re.sub(r'^#+\s*', '', line).strip()
 
             if line_no_hash.lower() in ["json", "css", "javascript", "js", "html"]:
                 continue
@@ -455,16 +436,16 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
             line_clean = line_clean.replace("experiencia utilizador", "experiencia de usuario")
             line_clean = line_clean.replace("e varejas", "minorista / e-commerce")
             line_clean = line_clean.replace("<title>", "título: ").replace("</title>", "")
-            line_clean = _clean_prose_line(line_clean)
+            line_clean = line_clean.replace("`", "")
 
             if line_clean.startswith("|") and line_clean.endswith("|"):
                 continue
 
             if doc_type == "audit":
-                line_clean = re.sub(r"\$.*?\$", "", line_clean)
-                line_clean = line_clean.replace("$", "")
+                line_clean = re.sub(r'\$.*?\$', '', line_clean)
+                line_clean = line_clean.replace('$', '')
 
-            if re.match(r"^[1-5]\.\s+[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]", line_clean) and len(line_clean) < 85:
+            if re.match(r'^[1-5]\.\s+[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]', line_clean) and len(line_clean) < 85:
                 if formatted_lines:
                     story.append(Paragraph("<br/>".join(formatted_lines), body_style))
                     formatted_lines = []
@@ -602,13 +583,9 @@ def build_report_text(client_instance, store_url, sd, report_language, doc_type=
            2. Snippets de código y optimización frontend
            3. Arquitectura del checkout y pasarelas de pago
            4. Plan de acción de 7 días para escalar
-        3. Every JS/CSS/HTML/JSON code block must be syntactically complete and valid:
-           - Always include '=' in variable assignments (e.g., const raw = localStorage.getItem(...);).
-           - Always close every quote and bracket/parenthesis.
-           - Use valid 6-digit hex colors (e.g., #3b0764).
-           - Put each code block in its own paragraph block separated by blank lines.
-        4. In prose and bullet points, write plain text without backticks (`), without raw LaTeX dollar signs like $A/B$ (write A/B), and without stray single quotes around identifiers.
-        5. Never cut off mid-sentence or leave a trailing number at the end. Complete every section and bullet point cleanly.
+        3. Every JS/CSS/HTML/JSON code block must be syntactically valid and complete (valid 6-digit hex colors like #3b0764, proper '=' assignments, closed quotes/braces/parentheses). Put each code block in its own paragraph block separated by blank lines.
+        4. Never use backticks (`) inside prose or bullet points.
+        5. Never cut off mid-sentence or leave a trailing number at the end. Finish the final section with a complete closing sentence.
         6. Write the response entirely in professional, corporate {report_language}.
         """
         system_msg = "You are an elite technical consultant and e-commerce conversion architect."
@@ -646,7 +623,7 @@ def build_report_text(client_instance, store_url, sd, report_language, doc_type=
         {"role": "system", "content": system_msg},
         {"role": "user", "content": prompt},
     ]
-    completion = call_groq_chat(client_instance, messages, temperature=0.2, max_tokens=tokens_limit)
+    completion = call_groq_chat(client_instance, messages, temperature=0.25, max_tokens=tokens_limit)
     return completion.choices[0].message.content
 
 

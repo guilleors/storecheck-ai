@@ -241,7 +241,7 @@ def _format_inline_bold(text_line):
 def _clean_code_line(line_str):
     """Limpia artefactos comunes de salida de LLM dentro de bloques de código."""
     cleaned = line_str.strip()
-    cleaned = re.sub(r'#([0-9a-fA-F]{7})\b', lambda m: "#" + m.group(1)[:6], cleaned)
+    cleaned = re.sub(r'#([0-9a-fA-F]{7})\b', r'#\1'[:7], cleaned)
     cleaned = cleaned.replace("$0=>\\{$", "() => {")
     cleaned = cleaned.replace("\\${", "${")
     return cleaned
@@ -250,10 +250,9 @@ def _clean_code_line(line_str):
 def _is_code_line(line_stripped):
     """Detecta líneas que parecen código CSS, JSON, HTML o JS."""
     code_markers = [
-        "{", "}", ";", "</", "<script", "<div", "<link", "const ", "let ", "var ",
-        "function ", "export ", "import ", "@media", "display:", "padding:", "margin:",
-        "color:", "background", "border", "width:", "font-", "priceCurrency", '"@context"',
-        "localStorage", "addEventListener", "async function"
+        "{", "}", ";", "</", "<script", "<div", "const ", "let ", "var ",
+        "function ", "@media", "display:", "padding:", "margin:", "color:",
+        "background", "border", "width:", "font-", "priceCurrency", '"@context"'
     ]
     return any(m in line_stripped for m in code_markers)
 
@@ -319,7 +318,7 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
         parent=styles['Code'],
         fontName='Courier',
         fontSize=8.5,
-        leading=12.5,
+        leading=12,
         textColor=colors.HexColor('#0F172A'),
         backColor=colors.HexColor('#F8FAFC'),
         borderColor=colors.HexColor('#CBD5E1'),
@@ -391,6 +390,7 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
             continue
         if any(b_lower.startswith(prefix) for prefix in ["hola", "aquí tienes", "después de analizar", "estimado", "presento"]):
             continue
+        # Evita líneas numéricas sueltas o cortadas al final (ej: "3" o "3.")
         if re.match(r'^\d+\.?$', b_clean):
             continue
 
@@ -405,16 +405,12 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
         if not lines:
             continue
 
-        is_fence = lines[0].startswith("```")
-        non_fence_lines = [l for l in lines if not l.startswith("```")]
-        is_code_cluster = (
-            not is_fence
-            and len(non_fence_lines) >= 2
-            and all(_is_code_line(l) or l in ["{", "}", "});", ");"] for l in non_fence_lines)
-        )
-
-        if is_fence or is_code_cluster:
-            code_lines = [html.escape(_clean_code_line(l)) for l in non_fence_lines]
+        if lines[0].startswith("```") or (len(lines) >= 2 and all(_is_code_line(l) or l in ["{", "}", "});"] for l in lines if not l.startswith("```"))):
+            code_lines = []
+            for l in lines:
+                if l.startswith("```"):
+                    continue
+                code_lines.append(html.escape(_clean_code_line(l)))
             if code_lines:
                 story.append(Paragraph("<br/>".join(code_lines), code_style))
             continue
@@ -583,9 +579,9 @@ def build_report_text(client_instance, store_url, sd, report_language, doc_type=
            2. Snippets de código y optimización frontend
            3. Arquitectura del checkout y pasarelas de pago
            4. Plan de acción de 7 días para escalar
-        3. Every JS/CSS/HTML/JSON code block must be syntactically valid and complete (valid 6-digit hex colors like #3b0764, proper '=' assignments, closed quotes/braces/parentheses). Put each code block in its own paragraph block separated by blank lines.
+        3. Every JS/CSS/HTML/JSON code block must be syntactically valid and clean (valid 6-digit hex colors like #3b0764, proper '=' assignments, valid template literals). Put each code block in its own paragraph block separated by blank lines.
         4. Never use backticks (`) inside prose or bullet points.
-        5. Never cut off mid-sentence or leave a trailing number at the end. Finish the final section with a complete closing sentence.
+        5. Never cut off mid-sentence or leave a trailing number at the end. Complete every section and bullet point cleanly.
         6. Write the response entirely in professional, corporate {report_language}.
         """
         system_msg = "You are an elite technical consultant and e-commerce conversion architect."
@@ -762,7 +758,7 @@ def render_playbook_section(
             )
     else:
         playbook_checkout_url = build_checkout_url(
-            "[https://storecheck-ai.lemonsqueezy.com/checkout/buy/c88fd3da-a0e7-4319-821a-f126d584d96e](https://storecheck-ai.lemonsqueezy.com/checkout/buy/c88fd3da-a0e7-4319-821a-f126d584d96e)",
+            "https://storecheck-ai.lemonsqueezy.com/checkout/buy/c88fd3da-a0e7-4319-821a-f126d584d96e",
             redirect_base_url,
             store_url,
             "?success=true&success_playbook=true",
@@ -797,9 +793,9 @@ i18n_ui = {
         "title": "StoreCheck AI",
         "subtitle": "Diagnósticos automatizados con IA y recomendaciones de crecimiento para e-commerce",
         "url_label": "Ingresá la URL de tu tienda principal",
-        "url_placeholder": "[https://mitienda.com](https://mitienda.com)",
+        "url_placeholder": "https://mitienda.com",
         "competitor_label": "Ingresá la URL de la tienda rival / competencia",
-        "competitor_placeholder": "[https://tiendacompetencia.com](https://tiendacompetencia.com)",
+        "competitor_placeholder": "https://tiendacompetencia.com",
         "btn_preview": "🚀 Ejecutar Auditoría / Comparativa",
         "btn_reset": "🔄 Restablecer",
         "spinner": "Analizando tiendas globalmente...",
@@ -822,9 +818,9 @@ i18n_ui = {
         "title": "StoreCheck AI",
         "subtitle": "Automated AI Diagnostics & Growth Recommendations for E-Commerce Stores",
         "url_label": "Enter your Main Store URL",
-        "url_placeholder": "[https://your-store.com](https://your-store.com)",
+        "url_placeholder": "https://your-store.com",
         "competitor_label": "Enter Competitor Store URL",
-        "competitor_placeholder": "[https://competitorstore.com](https://competitorstore.com)",
+        "competitor_placeholder": "https://competitorstore.com",
         "btn_preview": "🚀 Run Audit / Head-to-Head",
         "btn_reset": "🔄 Reset",
         "spinner": "Analyzing stores globally...",
@@ -847,9 +843,9 @@ i18n_ui = {
         "title": "StoreCheck AI",
         "subtitle": "Diagnósticos automatizados por IA e recomendações de crescimento para e-commerce",
         "url_label": "Insira o URL da sua loja principal",
-        "url_placeholder": "[https://sualoja.com](https://sualoja.com)",
+        "url_placeholder": "https://sualoja.com",
         "competitor_label": "Insira o URL da loja concorrente",
-        "competitor_placeholder": "[https://lojacorrente.com](https://lojacorrente.com)",
+        "competitor_placeholder": "https://lojacorrente.com",
         "btn_preview": "🚀 Executar Auditoria / Comparativo",
         "btn_reset": "🔄 Redefinir",
         "spinner": "Analisando lojas globalmente...",
@@ -872,9 +868,9 @@ i18n_ui = {
         "title": "StoreCheck AI",
         "subtitle": "Diagnostica automatizzata tramite IA e consigli di crescita per e-commerce",
         "url_label": "Inserisci l'URL del tuo negozio principale",
-        "url_placeholder": "[https://tuonegozio.com](https://tuonegozio.com)",
+        "url_placeholder": "https://tuonegozio.com",
         "competitor_label": "Inserisci l'URL del negozio concorrente",
-        "competitor_placeholder": "[https://negozioconcorrente.com](https://negozioconcorrente.com)",
+        "competitor_placeholder": "https://negozioconcorrente.com",
         "btn_preview": "🚀 Esegui Audit / Testa a Testa",
         "btn_reset": "🔄 Reimposta",
         "spinner": "Analisi dei negozi in corso...",
@@ -897,9 +893,9 @@ i18n_ui = {
         "title": "StoreCheck AI",
         "subtitle": "Diagnostics automatisés par IA et recommandations de croissance pour e-commerce",
         "url_label": "Entrez l'URL de votre boutique principale",
-        "url_placeholder": "[https://votre-boutique.com](https://votre-boutique.com)",
+        "url_placeholder": "https://votre-boutique.com",
         "competitor_label": "Entrez l'URL de la boutique concurrente",
-        "competitor_placeholder": "[https://boutiqueconcurrente.com](https://boutiqueconcurrente.com)",
+        "competitor_placeholder": "https://boutiqueconcurrente.com",
         "btn_preview": "🚀 Lancer l'Audit / Comparatif",
         "btn_reset": "🔄 Réinitialiser",
         "spinner": "Analyse des boutiques en cours...",
@@ -922,9 +918,9 @@ i18n_ui = {
         "title": "StoreCheck AI",
         "subtitle": "针对电商的自动化人工智能诊断与业务增长建议",
         "url_label": "输入您的主商店网址",
-        "url_placeholder": "[https://your-store.com](https://your-store.com)",
+        "url_placeholder": "https://your-store.com",
         "competitor_label": "输入竞争对手商店网址",
-        "competitor_placeholder": "[https://competitorstore.com](https://competitorstore.com)",
+        "competitor_placeholder": "https://competitorstore.com",
         "btn_preview": "🚀 运行审计 / 竞品对比",
         "btn_reset": "🔄 重置",
         "spinner": "正在全局分析商店...",
@@ -1117,7 +1113,7 @@ if run_audit:
 has_session_audit = "preview_result" in st.session_state and "scraped_data" in st.session_state
 is_paid = st.query_params.get("success", "false").lower() == "true"
 is_playbook_paid = st.query_params.get("success_playbook", "false").lower() == "true"
-app_redirect_base = "[https://storecheck-ai.streamlit.app/](https://storecheck-ai.streamlit.app/)"
+app_redirect_base = "https://storecheck-ai.streamlit.app/"
 
 if has_session_audit:
     st.markdown("---")
@@ -1200,7 +1196,7 @@ if has_session_audit:
 
     else:
         checkout_url = build_checkout_url(
-            "[https://storecheck-ai.lemonsqueezy.com/checkout/buy/16b5540c-1884-4e2c-a07a-3912222588dc](https://storecheck-ai.lemonsqueezy.com/checkout/buy/16b5540c-1884-4e2c-a07a-3912222588dc)",
+            "https://storecheck-ai.lemonsqueezy.com/checkout/buy/16b5540c-1884-4e2c-a07a-3912222588dc",
             app_redirect_base,
             active_store_url,
             "?success=true",

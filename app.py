@@ -228,7 +228,11 @@ def _clean_prose_line(text_line):
     cleaned = text_line.replace("`", "")
     cleaned = re.sub(r"\$A/B\$", "A/B", cleaned, flags=re.IGNORECASE)
     cleaned = cleaned.replace("$", "")
-    cleaned = re.sub(r"'(orders|order_items|total|id|user_id|status|currency|created_at|updated_at|product_id|qty|price)'", r"\1", cleaned)
+    cleaned = re.sub(
+        r"'(orders|order_items|total|id|user_id|status|currency|created_at|updated_at|product_id|qty|price)'",
+        r"\1",
+        cleaned,
+    )
     cleaned = re.sub(r"'(/?[a-zA-Z0-9_/-]+)'(?=[)\s.,;:])", r"\1", cleaned)
     return cleaned.strip()
 
@@ -257,7 +261,7 @@ def _clean_code_line(line_str):
     cleaned = cleaned.replace("localStorage.removeltem", "localStorage.removeItem")
     cleaned = re.sub(r"\bconst\s+([a-zA-Z_]\w*)\s+([a-zA-Z_]\w*\s*\()", r"const \1 = \2", cleaned)
     cleaned = re.sub(r"\bconst\s+([a-zA-Z_]\w*)\s+(new\s+[a-zA-Z_]\w*\s*\()", r"const \1 = \2", cleaned)
-    cleaned = re.sub(r"\bconst\s+([a-zA-Z_]\w*)\s+(require\s*\()", r"const \1 = \2", cleaned) cleaned = re.sub(r"onload=\"this\.rel='stylesheet'>", "onload=\"this.rel='stylesheet'\">", cleaned) cleaned = re.sub(r"\.\.\s*product\s*\)", "...product })", cleaned)
+    cleaned = re.sub(r"\bconst\s+([a-zA-Z_]\w*)\s+(require\s*\()", r"const \1 = \2", cleaned) cleaned = re.sub(r'onload="this\.rel=\'stylesheet\'>', 'onload="this.rel=\'stylesheet\'">', cleaned) cleaned = re.sub(r"\.\.\s*product\s*\)", "...product })", cleaned)
     return cleaned
 
 
@@ -421,7 +425,7 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
 
         is_fence_block = lines[0].startswith("```")
         is_code_cluster = (not is_fence_block) and (
-            len(lines) >= 2 and all(_is_code_line(l) or l in ["{", "}", "});", "});"] for l in lines)
+            len(lines) >= 2 and all(_is_code_line(l) or l in ["{", "}", "});"] for l in lines)
         )
 
         if is_fence_block or is_code_cluster:

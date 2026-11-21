@@ -253,7 +253,7 @@ def _format_inline_bold(text_line):
 
 
 def _clean_code_line(line_str):
-    """Limpia y normaliza líneas de código generadas por el modelo."""
+    """Limpia y normaliza líneas de código generadas por el modelo de forma segura."""
     cleaned = line_str.strip()
     cleaned = re.sub(r"#([0-9a-fA-F]{7})\b", lambda m: "#" + m.group(1)[:6], cleaned)
     cleaned = cleaned.replace("$0=>\\{$", "() => {")
@@ -261,7 +261,7 @@ def _clean_code_line(line_str):
     cleaned = cleaned.replace("localStorage.removeltem", "localStorage.removeItem")
     cleaned = re.sub(r"\bconst\s+([a-zA-Z_]\w*)\s+([a-zA-Z_]\w*\s*\()", r"const \1 = \2", cleaned)
     cleaned = re.sub(r"\bconst\s+([a-zA-Z_]\w*)\s+(new\s+[a-zA-Z_]\w*\s*\()", r"const \1 = \2", cleaned)
-    cleaned = re.sub(r"\bconst\s+([a-zA-Z_]\w*)\s+(require\s*\()", r"const \1 = \2", cleaned) cleaned = re.sub(r'onload="this\.rel=\'stylesheet\'>', 'onload="this.rel=\'stylesheet\'">', cleaned) cleaned = re.sub(r"\.\.\s*product\s*\)", "...product })", cleaned)
+    cleaned = re.sub(r"\bconst\s+([a-zA-Z_]\w*)\s+(require\s*\()", r"const \1 = \2", cleaned) if "onload=" in cleaned and "this.rel='stylesheet'>" in cleaned and not cleaned.endswith('">'): cleaned = cleaned.replace("this.rel='stylesheet'>", "this.rel='stylesheet'\">") cleaned = re.sub(r"\.\.\s*product\s*\)", "...product })", cleaned)
     return cleaned
 
 

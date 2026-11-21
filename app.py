@@ -223,9 +223,19 @@ def calculate_store_metrics(scraped_data, language):
     return health_score, seo_score, speed_index, mobile_readiness
 
 
+def _clean_prose_line(text_line):
+    """Limpia sintaxis de LaTeX suelta, backticks y comillas desparejas en texto de prosa."""
+    cleaned = text_line.replace("`", "")
+    cleaned = re.sub(r"\$A/B\$", "A/B", cleaned, flags=re.IGNORECASE)
+    cleaned = cleaned.replace("$", "")
+    cleaned = re.sub(r"'(orders|order_items|total|id|user_id|status|currency|created_at|updated_at|product_id|qty|price)'", r"\1", cleaned)
+    cleaned = re.sub(r"'(/?[a-zA-Z0-9_/-]+)'(?=[)\s.,;:])", r"\1", cleaned)
+    return cleaned.strip()
+
+
 def _format_inline_bold(text_line):
     """Convierte **negrita** de forma segura a HTML para ReportLab."""
-    escaped = html.escape(text_line.replace("`", ""))
+    escaped = html.escape(_clean_prose_line(text_line))
     parts = escaped.split("**")
     if len(parts) >= 3:
         new_parts = []
@@ -239,20 +249,25 @@ def _format_inline_bold(text_line):
 
 
 def _clean_code_line(line_str):
-    """Limpia artefactos comunes de salida de LLM dentro de bloques de código."""
+    """Limpia y normaliza líneas de código generadas por el modelo."""
     cleaned = line_str.strip()
-    cleaned = re.sub(r'#([0-9a-fA-F]{7})\b', r'#\1'[:7], cleaned)
+    cleaned = re.sub(r"#([0-9a-fA-F]{7})\b", lambda m: "#" + m.group(1)[:6], cleaned)
     cleaned = cleaned.replace("$0=>\\{$", "() => {")
     cleaned = cleaned.replace("\\${", "${")
+    cleaned = cleaned.replace("localStorage.removeltem", "localStorage.removeItem")
+    cleaned = re.sub(r"\bconst\s+([a-zA-Z_]\w*)\s+([a-zA-Z_]\w*\s*\()", r"const \1 = \2", cleaned)
+    cleaned = re.sub(r"\bconst\s+([a-zA-Z_]\w*)\s+(new\s+[a-zA-Z_]\w*\s*\()", r"const \1 = \2", cleaned)
+    cleaned = re.sub(r"\bconst\s+([a-zA-Z_]\w*)\s+(require\s*\()", r"const \1 = \2", cleaned) cleaned = re.sub(r"onload=\"this\.rel='stylesheet'>", "onload=\"this.rel='stylesheet'\">", cleaned) cleaned = re.sub(r"\.\.\s*product\s*\)", "...product })", cleaned)
     return cleaned
 
 
 def _is_code_line(line_stripped):
     """Detecta líneas que parecen código CSS, JSON, HTML o JS."""
     code_markers = [
-        "{", "}", ";", "</", "<script", "<div", "const ", "let ", "var ",
-        "function ", "@media", "display:", "padding:", "margin:", "color:",
-        "background", "border", "width:", "font-", "priceCurrency", '"@context"'
+        "{", "}", ";", "</", "<script", "<div", "<link", "const ", "let ", "var ",
+        "function ", "export function", "@media", "display:", "padding:", "margin:",
+        "color:", "background", "border", "width:", "font-", "priceCurrency", '"@context"',
+        "localStorage", "addEventListener", "module.exports", "async function"
     ]
     return any(m in line_stripped for m in code_markers)
 
@@ -318,7 +333,7 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
         parent=styles['Code'],
         fontName='Courier',
         fontSize=8.5,
-        leading=12,
+        leading=12.5,
         textColor=colors.HexColor('#0F172A'),
         backColor=colors.HexColor('#F8FAFC'),
         borderColor=colors.HexColor('#CBD5E1'),
@@ -390,8 +405,7 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
             continue
         if any(b_lower.startswith(prefix) for prefix in ["hola", "aquí tienes", "después de analizar", "estimado", "presento"]):
             continue
-        # Evita líneas numéricas sueltas o cortadas al final (ej: "3" o "3.")
-        if re.match(r'^\d+\.?$', b_clean):
+        if re.match(r"^\d+\.?$", b_clean):
             continue
 
         snippet_key = b_lower[:70]
@@ -401,11 +415,16 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
         cleaned_blocks.append(b_clean)
 
     for block in cleaned_blocks:
-        lines = [ln.strip() for ln in block.split("\n") if ln.strip() and not re.match(r'^\d+\.?$', ln.strip())]
+        lines = [ln.strip() for ln in block.split("\n") if ln.strip() and not re.match(r"^\d+\.?$", ln.strip())]
         if not lines:
             continue
 
-        if lines[0].startswith("```") or (len(lines) >= 2 and all(_is_code_line(l) or l in ["{", "}", "});"] for l in lines if not l.startswith("```"))):
+        is_fence_block = lines[0].startswith("```")
+        is_code_cluster = (not is_fence_block) and (
+            len(lines) >= 2 and all(_is_code_line(l) or l in ["{", "}", "});", "});"] for l in lines)
+        )
+
+        if is_fence_block or is_code_cluster:
             code_lines = []
             for l in lines:
                 if l.startswith("```"):
@@ -417,12 +436,12 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
 
         formatted_lines = []
         for line in lines:
-            if re.match(r'^\|?[\s\-:]+\|[\s\-:|]+$', line):
+            if re.match(r"^\|?[\s\-:]+\|[\s\-:|]+$", line):
                 continue
             if line.startswith("```"):
                 continue
 
-            line_no_hash = re.sub(r'^#+\s*', '', line).strip()
+            line_no_hash = re.sub(r"^#+\s*", "", line).strip()
 
             if line_no_hash.lower() in ["json", "css", "javascript", "js", "html"]:
                 continue
@@ -432,16 +451,16 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
             line_clean = line_clean.replace("experiencia utilizador", "experiencia de usuario")
             line_clean = line_clean.replace("e varejas", "minorista / e-commerce")
             line_clean = line_clean.replace("<title>", "título: ").replace("</title>", "")
-            line_clean = line_clean.replace("`", "")
+            line_clean = _clean_prose_line(line_clean)
 
             if line_clean.startswith("|") and line_clean.endswith("|"):
                 continue
 
             if doc_type == "audit":
-                line_clean = re.sub(r'\$.*?\$', '', line_clean)
-                line_clean = line_clean.replace('$', '')
+                line_clean = re.sub(r"\$.*?\$", "", line_clean)
+                line_clean = line_clean.replace("$", "")
 
-            if re.match(r'^[1-5]\.\s+[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]', line_clean) and len(line_clean) < 85:
+            if re.match(r"^[1-5]\.\s+[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]", line_clean) and len(line_clean) < 85:
                 if formatted_lines:
                     story.append(Paragraph("<br/>".join(formatted_lines), body_style))
                     formatted_lines = []
@@ -579,8 +598,12 @@ def build_report_text(client_instance, store_url, sd, report_language, doc_type=
            2. Snippets de código y optimización frontend
            3. Arquitectura del checkout y pasarelas de pago
            4. Plan de acción de 7 días para escalar
-        3. Every JS/CSS/HTML/JSON code block must be syntactically valid and clean (valid 6-digit hex colors like #3b0764, proper '=' assignments, valid template literals). Put each code block in its own paragraph block separated by blank lines.
-        4. Never use backticks (`) inside prose or bullet points.
+        3. Every JS/CSS/HTML/JSON code block must be syntactically complete and valid:
+           - Always include '=' in variable assignments (e.g., const raw = localStorage.getItem(...);).
+           - Always close every quote and bracket/parenthesis.
+           - Use valid 6-digit hex colors (e.g., #3b0764).
+           - Put each code block in its own paragraph block separated by blank lines.
+        4. In prose and bullet points, write plain text without backticks (`), without raw LaTeX dollar signs like $A/B$ (write A/B), and without stray single quotes around identifiers.
         5. Never cut off mid-sentence or leave a trailing number at the end. Complete every section and bullet point cleanly.
         6. Write the response entirely in professional, corporate {report_language}.
         """
@@ -619,7 +642,7 @@ def build_report_text(client_instance, store_url, sd, report_language, doc_type=
         {"role": "system", "content": system_msg},
         {"role": "user", "content": prompt},
     ]
-    completion = call_groq_chat(client_instance, messages, temperature=0.25, max_tokens=tokens_limit)
+    completion = call_groq_chat(client_instance, messages, temperature=0.2, max_tokens=tokens_limit)
     return completion.choices[0].message.content
 
 
@@ -758,7 +781,7 @@ def render_playbook_section(
             )
     else:
         playbook_checkout_url = build_checkout_url(
-            "https://storecheck-ai.lemonsqueezy.com/checkout/buy/c88fd3da-a0e7-4319-821a-f126d584d96e",
+            "[https://storecheck-ai.lemonsqueezy.com/checkout/buy/c88fd3da-a0e7-4319-821a-f126d584d96e](https://storecheck-ai.lemonsqueezy.com/checkout/buy/c88fd3da-a0e7-4319-821a-f126d584d96e)",
             redirect_base_url,
             store_url,
             "?success=true&success_playbook=true",
@@ -793,9 +816,9 @@ i18n_ui = {
         "title": "StoreCheck AI",
         "subtitle": "Diagnósticos automatizados con IA y recomendaciones de crecimiento para e-commerce",
         "url_label": "Ingresá la URL de tu tienda principal",
-        "url_placeholder": "https://mitienda.com",
+        "url_placeholder": "[https://mitienda.com](https://mitienda.com)",
         "competitor_label": "Ingresá la URL de la tienda rival / competencia",
-        "competitor_placeholder": "https://tiendacompetencia.com",
+        "competitor_placeholder": "[https://tiendacompetencia.com](https://tiendacompetencia.com)",
         "btn_preview": "🚀 Ejecutar Auditoría / Comparativa",
         "btn_reset": "🔄 Restablecer",
         "spinner": "Analizando tiendas globalmente...",
@@ -818,9 +841,9 @@ i18n_ui = {
         "title": "StoreCheck AI",
         "subtitle": "Automated AI Diagnostics & Growth Recommendations for E-Commerce Stores",
         "url_label": "Enter your Main Store URL",
-        "url_placeholder": "https://your-store.com",
+        "url_placeholder": "[https://your-store.com](https://your-store.com)",
         "competitor_label": "Enter Competitor Store URL",
-        "competitor_placeholder": "https://competitorstore.com",
+        "competitor_placeholder": "[https://competitorstore.com](https://competitorstore.com)",
         "btn_preview": "🚀 Run Audit / Head-to-Head",
         "btn_reset": "🔄 Reset",
         "spinner": "Analyzing stores globally...",
@@ -843,9 +866,9 @@ i18n_ui = {
         "title": "StoreCheck AI",
         "subtitle": "Diagnósticos automatizados por IA e recomendações de crescimento para e-commerce",
         "url_label": "Insira o URL da sua loja principal",
-        "url_placeholder": "https://sualoja.com",
+        "url_placeholder": "[https://sualoja.com](https://sualoja.com)",
         "competitor_label": "Insira o URL da loja concorrente",
-        "competitor_placeholder": "https://lojacorrente.com",
+        "competitor_placeholder": "[https://lojacorrente.com](https://lojacorrente.com)",
         "btn_preview": "🚀 Executar Auditoria / Comparativo",
         "btn_reset": "🔄 Redefinir",
         "spinner": "Analisando lojas globalmente...",
@@ -868,9 +891,9 @@ i18n_ui = {
         "title": "StoreCheck AI",
         "subtitle": "Diagnostica automatizzata tramite IA e consigli di crescita per e-commerce",
         "url_label": "Inserisci l'URL del tuo negozio principale",
-        "url_placeholder": "https://tuonegozio.com",
+        "url_placeholder": "[https://tuonegozio.com](https://tuonegozio.com)",
         "competitor_label": "Inserisci l'URL del negozio concorrente",
-        "competitor_placeholder": "https://negozioconcorrente.com",
+        "competitor_placeholder": "[https://negozioconcorrente.com](https://negozioconcorrente.com)",
         "btn_preview": "🚀 Esegui Audit / Testa a Testa",
         "btn_reset": "🔄 Reimposta",
         "spinner": "Analisi dei negozi in corso...",
@@ -893,9 +916,9 @@ i18n_ui = {
         "title": "StoreCheck AI",
         "subtitle": "Diagnostics automatisés par IA et recommandations de croissance pour e-commerce",
         "url_label": "Entrez l'URL de votre boutique principale",
-        "url_placeholder": "https://votre-boutique.com",
+        "url_placeholder": "[https://votre-boutique.com](https://votre-boutique.com)",
         "competitor_label": "Entrez l'URL de la boutique concurrente",
-        "competitor_placeholder": "https://boutiqueconcurrente.com",
+        "competitor_placeholder": "[https://boutiqueconcurrente.com](https://boutiqueconcurrente.com)",
         "btn_preview": "🚀 Lancer l'Audit / Comparatif",
         "btn_reset": "🔄 Réinitialiser",
         "spinner": "Analyse des boutiques en cours...",
@@ -918,9 +941,9 @@ i18n_ui = {
         "title": "StoreCheck AI",
         "subtitle": "针对电商的自动化人工智能诊断与业务增长建议",
         "url_label": "输入您的主商店网址",
-        "url_placeholder": "https://your-store.com",
+        "url_placeholder": "[https://your-store.com](https://your-store.com)",
         "competitor_label": "输入竞争对手商店网址",
-        "competitor_placeholder": "https://competitorstore.com",
+        "competitor_placeholder": "[https://competitorstore.com](https://competitorstore.com)",
         "btn_preview": "🚀 运行审计 / 竞品对比",
         "btn_reset": "🔄 重置",
         "spinner": "正在全局分析商店...",
@@ -1113,7 +1136,7 @@ if run_audit:
 has_session_audit = "preview_result" in st.session_state and "scraped_data" in st.session_state
 is_paid = st.query_params.get("success", "false").lower() == "true"
 is_playbook_paid = st.query_params.get("success_playbook", "false").lower() == "true"
-app_redirect_base = "https://storecheck-ai.streamlit.app/"
+app_redirect_base = "[https://storecheck-ai.streamlit.app/](https://storecheck-ai.streamlit.app/)"
 
 if has_session_audit:
     st.markdown("---")
@@ -1196,7 +1219,7 @@ if has_session_audit:
 
     else:
         checkout_url = build_checkout_url(
-            "https://storecheck-ai.lemonsqueezy.com/checkout/buy/16b5540c-1884-4e2c-a07a-3912222588dc",
+            "[https://storecheck-ai.lemonsqueezy.com/checkout/buy/16b5540c-1884-4e2c-a07a-3912222588dc](https://storecheck-ai.lemonsqueezy.com/checkout/buy/16b5540c-1884-4e2c-a07a-3912222588dc)",
             app_redirect_base,
             active_store_url,
             "?success=true",

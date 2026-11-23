@@ -249,6 +249,9 @@ def _format_inline_bold(text_line):
 def _clean_code_line(line_str):
     """Limpia artefactos comunes de salida de LLM dentro de bloques de código."""
     cleaned = line_str.rstrip()
+    cleaned = cleaned.replace("%23", "#").replace("%24", "#")
+    cleaned = re.sub(r'(:\s*)%([0-9a-fA-F]{6})\b', r'\1#\2', cleaned)
+    cleaned = re.sub(r'(:\s*)23([0-9a-fA-F]{6})\b', r'\1#\2', cleaned)
     cleaned = re.sub(r'#([0-9a-fA-F]{7})\b', lambda m: '#' + m.group(1)[:6], cleaned)
     cleaned = cleaned.replace("$0=>\\{$", "() => {")
     cleaned = cleaned.replace("\\${", "${")
@@ -364,7 +367,6 @@ def _render_playbook_body(story, audit_text, body_style, section_heading_style, 
         if clean_line.lower() in ["json", "css", "javascript", "js", "html", "bash", "php", "liquid"]:
             continue
 
-        # Sección principal numerada (ej: "1. Diagnóstico crítico de conversión")
         if re.match(r"^[1-6]\.\s+[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]", clean_line) and len(clean_line) < 95:
             flush_prose()
             heading_block = KeepTogether([
@@ -375,13 +377,11 @@ def _render_playbook_body(story, audit_text, body_style, section_heading_style, 
             story.append(heading_block)
             continue
 
-        # Subtítulo corto terminado en ":"
         if clean_line.endswith(":") and len(clean_line) < 85 and not clean_line.startswith(("- ", "* ", "• ")):
             flush_prose()
             story.append(Paragraph(f"<b>{_format_inline_bold(clean_line)}</b>", subhead_style))
             continue
 
-        # Viñeta con sangría real
         if clean_line.startswith(("- ", "* ", "• ")):
             flush_prose()
             bullet_body = _format_inline_bold(clean_line[2:].strip())
@@ -730,7 +730,7 @@ def build_report_text(client_instance, store_url, sd, report_language, doc_type=
            2. Snippets de código y optimización frontend
            3. Arquitectura del checkout y pasarelas de pago
            4. Plan de acción de 7 días para escalar
-        3. Wrap every complete code snippet inside triple backticks (```) on its own line, with valid syntax and 6-digit hex colors (e.g. #3b0764). Do not split a single code snippet across multiple fenced blocks.
+        3. Wrap every complete code snippet inside triple backticks (```) on its own line. Ensure valid CSS/HTML/JS syntax with properly matched curly braces {{ }}, complete single-line <title> tags, no empty <span></span> tags, and valid 6-digit hex colors starting with '#' (never URL-encoded like %23). Do not split a single code snippet across multiple fenced blocks.
         4. Never use single backticks (`) inside prose or bullet points.
         5. Never cut off mid-sentence or leave a trailing number at the end. Complete every section and bullet point cleanly.
         6. Write the response entirely in professional, corporate {report_language}.
@@ -1213,8 +1213,11 @@ if run_audit:
                 - Payment Gateways Found: {', '.join(scraped_data['payment_gateways'])}
                 - Content Snippet: {scraped_data['raw_text'][:1200]}
 
-                Act as if you just tried to navigate this store as a customer trying to buy. Provide an executive teaser highlighting 3 critical friction points or conversion blockers found during your simulated shopping journey.
-                Write the response entirely in {ui_language}.
+                Act as if you just tried to navigate this store as a customer trying to buy. Provide an executive teaser highlighting 3 points in this exact order:
+                1. Home page status, title, and meta description / catalog clarity.
+                2. Cart button visibility and checkout flow access.
+                3. Payment gateways and overall purchase friction.
+                Keep it sharp, grounded strictly in the extracted data, and write the response entirely in {ui_language}.
                 """
 
             messages = [

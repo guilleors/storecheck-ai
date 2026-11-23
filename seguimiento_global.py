@@ -109,7 +109,6 @@ def raspar_tienda_rapido(url):
         elif "tiendanube" in html_content or "nuvemshop" in html_content:
             platform = "Tiendanube"
 
-        # Detección precisa de elementos de carrito para evitar falsos positivos por texto suelto
         has_cart = (
             bool(soup.find_all(class_=lambda x: x and any(c in " ".join(x).lower() if isinstance(x, list) else x.lower() for c in ["cart", "carrito", "minicart"])))
             or "/cart" in html_content
@@ -159,7 +158,6 @@ def generar_y_enviar_teaser(nombre, email_dest, web, pais, asunto_original):
     print(f"   🔎 Analizando {web} en vivo para armar el pre-informe...")
     datos_web = raspar_tienda_rapido(web)
 
-    # FRENO DE SEGURIDAD: Si no se pudo leer la web real, NO se envía nada para evitar inventar datos
     if not datos_web:
         print(f"   🛑 ALERTA: No se pudo acceder a {web} (no existe, está caída o bloquea bots).")
         print("   🛑 Envío cancelado automáticamente para no inventar información.")
@@ -197,7 +195,11 @@ def generar_y_enviar_teaser(nombre, email_dest, web, pais, asunto_original):
 
     [Línea en blanco]
 
-    Lista con 3 viñetas (usando "• ") separadas entre sí por una línea en blanco. Cada viñeta debe tener un título corto seguido de dos puntos y una explicación de máximo 2 líneas basada en los datos reales.
+    Lista con 3 viñetas (usando "• ") separadas entre sí por una línea en blanco, cubriendo en este orden exacto:
+    1) Estado de la home, título y meta descripción / claridad del catálogo.
+    2) Visibilidad del carrito y acceso al flujo de checkout.
+    3) Pasarelas de pago y fricción general para comprar.
+    Cada viñeta debe tener un título corto seguido de dos puntos y una explicación de máximo 2 líneas basada en los datos reales.
 
     [Línea en blanco]
 

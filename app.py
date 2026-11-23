@@ -10,7 +10,15 @@ import requests
 import streamlit as st
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+from reportlab.platypus import (
+    SimpleDocTemplate,
+    Paragraph,
+    Spacer,
+    Table,
+    TableStyle,
+    HRFlowable,
+    KeepTogether,
+)
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 
 # Configuración inicial de la página
@@ -240,8 +248,8 @@ def _format_inline_bold(text_line):
 
 def _clean_code_line(line_str):
     """Limpia artefactos comunes de salida de LLM dentro de bloques de código."""
-    cleaned = line_str.strip()
-    cleaned = re.sub(r'#([0-9a-fA-F]{7})\b', r'#\1'[:7], cleaned)
+    cleaned = line_str.rstrip()
+    cleaned = re.sub(r'#([0-9a-fA-F]{7})\b', lambda m: '#' + m.group(1)[:6], cleaned)
     cleaned = cleaned.replace("$0=>\\{$", "() => {")
     cleaned = cleaned.replace("\\${", "${")
     return cleaned
@@ -255,6 +263,144 @@ def _is_code_line(line_stripped):
         "background", "border", "width:", "font-", "priceCurrency", '"@context"'
     ]
     return any(m in line_stripped for m in code_markers)
+
+
+def _build_playbook_code_box(code_lines, code_style):
+    """Renderiza un bloque de código del Playbook en una tabla paginable con borde izquierdo."""
+    cleaned_rows = []
+    for raw_line in code_lines:
+        clean_l = _clean_code_line(raw_line)
+        if clean_l.strip().lower() in ["json", "css", "javascript", "js", "html", "bash", "php", "liquid"]:
+            continue
+        safe_l = html.escape(clean_l).replace("  ", "&nbsp;&nbsp;")
+        cleaned_rows.append([Paragraph(safe_l if safe_l else "&nbsp;", code_style)])
+
+    if not cleaned_rows:
+        return None
+
+    code_table = Table(cleaned_rows, colWidths=[504], splitByRow=1)
+    code_table.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F8FAFC")),
+        ("LINEBEFORE", (0, 0), (0, -1), 3, colors.HexColor("#0F172A")),
+        ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#CBD5E1")),
+        ("TOPPADDING", (0, 0), (-1, 0), 8),
+        ("BOTTOMPADDING", (0, -1), (-1, -1), 8),
+        ("TOPPADDING", (0, 1), (-1, -1), 1),
+        ("BOTTOMPADDING", (0, 0), (-1, -2), 1),
+        ("LEFTPADDING", (0, 0), (-1, -1), 10),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 10),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+    ]))
+    return code_table
+
+
+def _render_playbook_body(story, audit_text, body_style, section_heading_style, code_style):
+    """Parsea y renderiza el contenido del Playbook Pro con orden, aire y bloques de código limpios."""
+    bullet_style = ParagraphStyle(
+        "PlaybookBullet",
+        parent=body_style,
+        leftIndent=14,
+        firstLineIndent=-10,
+        spaceAfter=5,
+    )
+    subhead_style = ParagraphStyle(
+        "PlaybookSubhead",
+        parent=body_style,
+        fontSize=10.5,
+        leading=14,
+        textColor=colors.HexColor("#0F172A"),
+        spaceBefore=8,
+        spaceAfter=3,
+    )
+
+    lines = audit_text.splitlines()
+    in_fence = False
+    fence_lines = []
+    prose_buffer = []
+    seen_snippets = set()
+
+    def flush_prose():
+        nonlocal prose_buffer
+        if not prose_buffer:
+            return
+        text_joined = "<br/>".join(prose_buffer)
+        prose_buffer = []
+        story.append(Paragraph(text_joined, body_style))
+
+    for raw_line in lines:
+        stripped = raw_line.strip()
+
+        if stripped.startswith("```"):
+            if not in_fence:
+                flush_prose()
+                in_fence = True
+                fence_lines = []
+            else:
+                in_fence = False
+                key = "\n".join(fence_lines).strip().lower()[:120]
+                if key and key not in seen_snippets:
+                    seen_snippets.add(key)
+                    box = _build_playbook_code_box(fence_lines, code_style)
+                    if box:
+                        story.append(Spacer(1, 4))
+                        story.append(box)
+                        story.append(Spacer(1, 8))
+                fence_lines = []
+            continue
+
+        if in_fence:
+            fence_lines.append(raw_line)
+            continue
+
+        if not stripped or re.match(r"^\d+\.?$", stripped):
+            flush_prose()
+            continue
+
+        lower_s = stripped.lower()
+        if any(lower_s.startswith(p) for p in ["hola", "aquí tienes", "después de analizar", "estimado", "presento"]):
+            continue
+
+        clean_line = re.sub(r"^#+\s*", "", stripped).replace("`", "").strip()
+        if clean_line.lower() in ["json", "css", "javascript", "js", "html", "bash", "php", "liquid"]:
+            continue
+
+        # Sección principal numerada (ej: "1. Diagnóstico crítico de conversión")
+        if re.match(r"^[1-6]\.\s+[A-Za-zÁÉÍÓÚÜÑáéíóúüñ]", clean_line) and len(clean_line) < 95:
+            flush_prose()
+            heading_block = KeepTogether([
+                Spacer(1, 6),
+                Paragraph(f"<b>{html.escape(clean_line)}</b>", section_heading_style),
+                HRFlowable(width="100%", thickness=0.6, color=colors.HexColor("#CBD5E1"), spaceBefore=2, spaceAfter=6),
+            ])
+            story.append(heading_block)
+            continue
+
+        # Subtítulo corto terminado en ":"
+        if clean_line.endswith(":") and len(clean_line) < 85 and not clean_line.startswith(("- ", "* ", "• ")):
+            flush_prose()
+            story.append(Paragraph(f"<b>{_format_inline_bold(clean_line)}</b>", subhead_style))
+            continue
+
+        # Viñeta con sangría real
+        if clean_line.startswith(("- ", "* ", "• ")):
+            flush_prose()
+            bullet_body = _format_inline_bold(clean_line[2:].strip())
+            story.append(Paragraph(f"• {bullet_body}", bullet_style))
+            continue
+
+        if _is_code_line(clean_line) and not clean_line.endswith("."):
+            prose_buffer.append(html.escape(_clean_code_line(clean_line)))
+        else:
+            prose_buffer.append(_format_inline_bold(clean_line))
+
+    if in_fence and fence_lines:
+        box = _build_playbook_code_box(fence_lines, code_style)
+        if box:
+            story.append(Spacer(1, 4))
+            story.append(box)
+            story.append(Spacer(1, 8))
+
+    flush_prose()
 
 
 def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mobile, doc_type="audit"):
@@ -318,16 +464,10 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
         parent=styles['Code'],
         fontName='Courier',
         fontSize=8.5,
-        leading=12,
+        leading=11.5,
         textColor=colors.HexColor('#0F172A'),
-        backColor=colors.HexColor('#F8FAFC'),
-        borderColor=colors.HexColor('#CBD5E1'),
-        borderWidth=0.5,
-        borderPadding=8,
-        leftIndent=8,
-        rightIndent=8,
-        spaceBefore=6,
-        spaceAfter=10,
+        spaceBefore=0,
+        spaceAfter=0,
     )
 
     if doc_type == "playbook":
@@ -379,6 +519,18 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
     story.append(Paragraph(intro_fixed_text, body_style))
     story.append(Spacer(1, 8))
 
+    if doc_type == "playbook":
+        _render_playbook_body(
+            story=story,
+            audit_text=audit_text,
+            body_style=body_style,
+            section_heading_style=section_heading_style,
+            code_style=code_style,
+        )
+        doc.build(story)
+        buffer.seek(0)
+        return buffer.getvalue()
+
     blocks = audit_text.split("\n\n")
     cleaned_blocks = []
     seen_snippets = set()
@@ -390,7 +542,6 @@ def generate_pdf_report(store_url, audit_text, language, health, seo, speed, mob
             continue
         if any(b_lower.startswith(prefix) for prefix in ["hola", "aquí tienes", "después de analizar", "estimado", "presento"]):
             continue
-        # Evita líneas numéricas sueltas o cortadas al final (ej: "3" o "3.")
         if re.match(r'^\d+\.?$', b_clean):
             continue
 
@@ -579,8 +730,8 @@ def build_report_text(client_instance, store_url, sd, report_language, doc_type=
            2. Snippets de código y optimización frontend
            3. Arquitectura del checkout y pasarelas de pago
            4. Plan de acción de 7 días para escalar
-        3. Every JS/CSS/HTML/JSON code block must be syntactically valid and clean (valid 6-digit hex colors like #3b0764, proper '=' assignments, valid template literals). Put each code block in its own paragraph block separated by blank lines.
-        4. Never use backticks (`) inside prose or bullet points.
+        3. Wrap every complete code snippet inside triple backticks (```) on its own line, with valid syntax and 6-digit hex colors (e.g. #3b0764). Do not split a single code snippet across multiple fenced blocks.
+        4. Never use single backticks (`) inside prose or bullet points.
         5. Never cut off mid-sentence or leave a trailing number at the end. Complete every section and bullet point cleanly.
         6. Write the response entirely in professional, corporate {report_language}.
         """

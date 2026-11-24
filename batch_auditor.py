@@ -3,6 +3,7 @@ import os
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.utils import formataddr
 import time
 import random
 from datetime import datetime
@@ -67,7 +68,7 @@ def generar_correo(nombre, web, pais):
         f"Me tomé el atrevimiento de explorar {web} y noté algunos detalles de fricción en el checkout que seguramente estén interfiriendo en el flujo de ventas.\n"
         f"¿Podrá interesarte, sin compromiso, un pantallazo rápido con un par de ideas para corregirlo?\n"
         f"No dudes en responderme y te lo envío con gusto.\n"
-        f"Un abrazo\n"
+        f"Un abrazo\n\n"
         "Devolvé únicamente el correo listo para enviar con esos datos:"
     )
 
@@ -99,7 +100,7 @@ def generar_correo(nombre, web, pais):
 
 def enviar_email(destinatario, asunto, cuerpo):
     msg = MIMEMultipart()
-    msg['From'] = config.GMAIL_USER
+    msg['From'] = formataddr(("StoreCheck AI", config.GMAIL_USER))
     msg['To'] = destinatario
     msg['Subject'] = asunto
 

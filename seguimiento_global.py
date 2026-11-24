@@ -5,7 +5,7 @@ import json
 import time
 import imaplib
 import email
-from email.utils import parsedate_to_datetime
+from email.utils import parsedate_to_datetime, formataddr
 import unicodedata
 from datetime import datetime
 import smtplib
@@ -389,7 +389,7 @@ def enviar_correo_smtp(destinatario, asunto, cuerpo):
     """Envía el correo mediante el servidor SMTP oficial de Gmail usando TLS."""
     try:
         msg = MIMEMultipart()
-        msg['From'] = GMAIL_USER
+        msg['From'] = formataddr(("StoreCheck AI", GMAIL_USER))
         msg['To'] = destinatario
         msg['Subject'] = asunto
         msg.attach(MIMEText(cuerpo, 'plain', 'utf-8'))

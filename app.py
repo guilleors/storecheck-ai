@@ -29,6 +29,14 @@ st.set_page_config(
 )
 
 LAST_STORE_FILE = "last_audited_store.txt"
+REPORT_LANGUAGES = [
+    "Español",
+    "English",
+    "Português",
+    "Italiano",
+    "Français",
+    "中文 (Chinese)",
+]
 
 
 def normalize_store_url(raw_url):
@@ -933,7 +941,7 @@ if query_store and "store_url" not in st.session_state:
 # --- BARRA LATERAL ---
 ui_language = st.sidebar.selectbox(
     "🌐 Idioma de la Interfaz / UI Language",
-    ["Español", "English", "Português", "Italiano", "Français", "中文 (Chinese)"],
+    REPORT_LANGUAGES,
 )
 
 enable_comparison = st.sidebar.checkbox("⚔️ Modo Comparación (Tu tienda vs. Competencia)", value=False)
@@ -1310,14 +1318,8 @@ if has_session_audit:
 
     report_language = st.selectbox(
         t["report_lang_label"],
-        [
-            "Español",
-            "English",
-            "Português",
-            "Italiano",
-            "Français",
-            "中文 (Chinese)",
-        ],
+        REPORT_LANGUAGES,
+        key="report_lang_session",
     )
 
     comp_info_str = ""
@@ -1371,7 +1373,24 @@ elif is_paid or is_playbook_paid:
         or st.query_params.get("store", "")
         or load_last_store_url()
     )
-    target_lang = ui_language if ui_language in ["Español", "English", "Português", "Italiano", "Français", "中文 (Chinese)"] else "Español"
+
+    default_lang = (
+        st.session_state.get("playbook_pdf_lang")
+        if is_playbook_paid and st.session_state.get("playbook_pdf_lang") in REPORT_LANGUAGES
+        else (
+            st.session_state.get("audit_pdf_lang")
+            if st.session_state.get("audit_pdf_lang") in REPORT_LANGUAGES
+            else (ui_language if ui_language in REPORT_LANGUAGES else "Español")
+        )
+    )
+    default_lang_idx = REPORT_LANGUAGES.index(default_lang)
+
+    target_lang = st.selectbox(
+        t["report_lang_label"],
+        REPORT_LANGUAGES,
+        index=default_lang_idx,
+        key="report_lang_return",
+    )
 
     if target_store_url:
         if is_playbook_paid:
@@ -1387,7 +1406,7 @@ elif is_paid or is_playbook_paid:
                     button_label=t["btn_download_unlocked"],
                     button_key=f"dl_audit_from_pb_{target_store_url}",
                     store_url=target_store_url,
-                    report_lang=st.session_state.get("audit_pdf_lang", target_lang),
+                    report_lang=target_lang,
                 )
         else:
             render_audit_download_button(

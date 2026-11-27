@@ -1,527 +1,245 @@
 import os
 import re
 import csv
-import json
 import time
-import imaplib
-import email
-from email.utils import parsedate_to_datetime, formataddr
-import unicodedata
-from datetime import datetime
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
 import requests
 from bs4 import BeautifulSoup
-from groq import Groq
+from duckduckgo_search import DDGS
 
-# Importamos las credenciales desde el archivo local privado (config.py)
-try:
-    from config import GMAIL_USER, GMAIL_APP_PASSWORD, GROQ_API_KEY
-except ImportError:
-    GMAIL_USER = os.getenv("GMAIL_USER", "storecheckai@gmail.com")
-    GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD")
-    GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+ARCHIVO_MAESTRO = "prospectos_storecheck.csv"
+HUNTER_API_KEY = os.getenv("HUNTER_API_KEY")  # Opcional
 
-groq_client = Groq(api_key=GROQ_API_KEY)
+# Objetivos globales con cobertura real en los 5 continentes
+OBJETIVOS_GLOBALES = [
+    # --- AMÉRICA ---
+    {"pais": "América del Norte (US/CA)", "query": '"Powered by Shopify" OR "WooCommerce" "add to cart" site:.com OR site:.ca'},
+    {"pais": "Latinoamérica Hispana", "query": '"Powered by Shopify" OR "Tiendanube" "carrito" OR "comprar" site:.mx OR site:.co OR site:.cl OR site:.ar OR site:.pe'},
+    {"pais": "Brasil", "query": '"Powered by Shopify" "adicionar ao carrinho" site:.br OR site:.com.br'},
 
-ARCHIVO_HISTORIAL = "historial_invitaciones_globales.csv"
-STREAMLIT_URL = "https://storecheck-ai.streamlit.app/"
-DIAS_ESPERA = 4
+    # --- EUROPA ---
+    {"pais": "Europa Occidental (UK/IE)", "query": '"Powered by Shopify" "add to cart" site:.co.uk OR site:.ie'},
+    {"pais": "Europa Continental (FR/DE/ES/IT)", "query": '"Powered by Shopify" "ajouter au panier" OR "in den Warenkorb" OR "añadir al carrito" site:.fr OR site:.de OR site:.es OR site:.it'},
+    {"pais": "Europa del Norte / Nórdicos", "query": '"Powered by Shopify" "lägg i varukorg" OR "køb" site:.se OR site:.dk OR site:.no OR site:.fi'},
+
+    # --- ASIA ---
+    {"pais": "Asia Oriental (JP/KR/CN/TW)", "query": '"Powered by Shopify" "add to cart" OR "カートに入れる" OR "장바구니" site:.jp OR site:.kr OR site:.tw'},
+    {"pais": "Sudeste Asiático & India (SG/IN/MY)", "query": '"Powered by Shopify" "add to cart" site:.sg OR site:.in OR site:.my OR site:.id'},
+    {"pais": "Medio Oriente (AE/SA)", "query": '"Powered by Shopify" "add to cart" OR "أضف إلى السلة" site:.ae OR site:.sa'},
+
+    # --- ÁFRICA ---
+    {"pais": "África Subsahariana y del Sur (ZA/NG/KE)", "query": '"Powered by Shopify" "add to cart" site:.za OR site:.ng OR site:.ke'},
+    {"pais": "África del Norte (EG/MA)", "query": '"Powered by Shopify" "add to cart" site:.eg OR site:.ma'},
+
+    # --- OCEANÍA ---
+    {"pais": "Oceanía (AU/NZ)", "query": '"Powered by Shopify" "add to cart" site:.au OR site:.nz'}
+]
 
 
-def normalizar_texto(texto):
-    if not texto:
+def cargar_webs_existentes():
+    """Evita volver a raspar dominios que ya están en la base maestra"""
+    if not os.path.exists(ARCHIVO_MAESTRO):
+        return set()
+    with open(ARCHIVO_MAESTRO, mode="r", encoding="utf-8-sig") as f:
+        reader = csv.DictReader(f)
+        return {limpiar_dominio(row["web"]) for row in reader if row.get("web") and limpiar_dominio(row["web"])}
+
+
+def guardar_lead_maestro(nombre, email, web, pais):
+    """Guarda el contacto listo para que lo consuma batch_auditor.py"""
+    existe = os.path.exists(ARCHIVO_MAESTRO) and os.path.getsize(ARCHIVO_MAESTRO) > 0
+    with open(ARCHIVO_MAESTRO, mode="a", newline="", encoding="utf-8-sig") as f:
+        campos = ["nombre", "email", "web", "pais"]
+        writer = csv.DictWriter(f, fieldnames=campos)
+        if not existe:
+            writer.writeheader()
+        writer.writerow({
+            "nombre": nombre,
+            "email": email,
+            "web": web,
+            "pais": pais
+        })
+
+
+def limpiar_dominio(url):
+    """Extrae el dominio base limpio sin protocolo, www., rutas ni puertos"""
+    if not url:
         return ""
-    return ''.join(c for c in unicodedata.normalize('NFD', str(texto)) if unicodedata.category(c) != 'Mn').lower().strip()
-
-
-def get_col(fila, nombre_col, default=""):
-    """Busca una columna sin importar mayúsculas/minúsculas."""
-    for k, v in fila.items():
-        if k and k.strip().lower() == nombre_col.lower():
-            return str(v).strip() if v is not None else default
-    return default
-
-
-def set_col(fila, nombre_col, valor):
-    """Actualiza una columna respetando su nombre original."""
-    for k in fila.keys():
-        if k and k.strip().lower() == nombre_col.lower():
-            fila[k] = valor
-            return
-    fila[nombre_col] = valor
-
-
-def limpiar_dominio_url(web):
-    """Limpia protocolo y barras para armar un parámetro ?store= limpio."""
-    if not web:
+    dominio = re.sub(r"^https?://(www\.)?", "", str(url).strip(), flags=re.IGNORECASE)
+    dominio = dominio.split("/")[0].split("?")[0].split(":")[0].lower().strip().strip(".")
+    if "." not in dominio or len(dominio) < 4:
         return ""
-    limpio = re.sub(r"^https?://(www\.)?", "", str(web).strip()).strip("/")
-    return limpio
+    return dominio
 
 
-def obtener_idioma_por_pais(pais):
-    p = normalizar_texto(pais)
-    if any(k in p for k in ["argentina", "mexico", "espana", "colombia", "chile", "peru", "uruguay", "ecuador", "panama", "costa rica", "guatemala"]):
-        return "Español"
-    elif any(k in p for k in ["brasil", "brazil", "portugal"]):
-        return "Portugués"
-    elif any(k in p for k in ["francia", "france", "belgica", "belgium"]):
-        return "Francés"
-    elif any(k in p for k in ["italia", "italy"]):
-        return "Italiano"
-    elif any(k in p for k in ["alemania", "germany", "austria", "suiza", "switzerland"]):
-        return "Alemán"
-    else:
-        return "Inglés"
-
-
-def raspar_tienda_rapido(url):
-    """Extrae datos reales de la tienda del prospecto para armar un teaser preciso."""
-    try:
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
-            "Accept-Language": "es-ES,es;q=0.9,en;q=0.8",
-        }
-        if not url.startswith("http://") and not url.startswith("https://"):
-            url = "https://" + url
-
-        resp = requests.get(url, headers=headers, timeout=10)
-        if resp.status_code != 200:
-            return None
-
-        soup = BeautifulSoup(resp.text, "html.parser")
-        title = soup.title.string.strip() if soup.title and soup.title.string else "Sin título"
-        meta_desc = ""
-        desc_tag = soup.find("meta", attrs={"name": lambda x: x and x.lower() == "description"})
-        if desc_tag:
-            meta_desc = desc_tag.get("content", "").strip()
-
-        html_content = resp.text.lower()
-        platform = "Personalizada / Genérica"
-        if "shopify" in html_content or "cdn.shopify.com" in html_content:
-            platform = "Shopify"
-        elif "woocommerce" in html_content or "wp-content" in html_content:
-            platform = "WooCommerce / WordPress"
-        elif "prestashop" in html_content:
-            platform = "PrestaShop"
-        elif "tiendanube" in html_content or "nuvemshop" in html_content:
-            platform = "Tiendanube"
-
-        has_cart = (
-            bool(soup.find_all(class_=lambda x: x and any(c in " ".join(x).lower() if isinstance(x, list) else x.lower() for c in ["cart", "carrito", "minicart"])))
-            or "/cart" in html_content
-            or "/carrito" in html_content
-            or "add-to-cart" in html_content
-            or "add_to_cart" in html_content
-        )
-        has_checkout = (
-            "/checkout" in html_content
-            or "finalizar compra" in html_content
-            or "iniciar compra" in html_content
-            or "proceed to checkout" in html_content
-        )
-
-        gateways = []
-        if "mercadopago" in html_content:
-            gateways.append("MercadoPago")
-        if "paypal" in html_content:
-            gateways.append("PayPal")
-        if "stripe" in html_content:
-            gateways.append("Stripe")
-        if "transferencia" in html_content or "transfer" in html_content:
-            gateways.append("Transferencia Bancaria")
-
-        for script in soup(["script", "style", "nav", "footer"]):
-            script.extract()
-        visible_text = soup.get_text(separator=" ", strip=True)[:1500]
-
-        return {
-            "platform": platform,
-            "title": title,
-            "meta_description": meta_desc,
-            "has_cart": has_cart,
-            "has_checkout": has_checkout,
-            "gateways": gateways if gateways else ["No detectadas explícitamente"],
-            "snippet": visible_text,
-        }
-    except Exception:
-        return None
-
-
-def generar_y_enviar_teaser(nombre, email_dest, web, pais, asunto_original):
-    """Genera el pre-informe SOLO si logra extraer datos reales de la tienda. Nunca inventa."""
-    idioma = obtener_idioma_por_pais(pais)
-    saludo = nombre if nombre and nombre.lower() not in ["equipo", "team", "emprendedor", ""] else "hola"
-
-    print(f"   🔎 Analizando {web} en vivo para armar el pre-informe...")
-    datos_web = raspar_tienda_rapido(web)
-
-    if not datos_web:
-        print(f"   🛑 ALERTA: No se pudo acceder a {web} (no existe, está caída o bloquea bots).")
-        print("   🛑 Envío cancelado automáticamente para no inventar información.")
-        return "WEB_INACCESIBLE"
-
-    contexto_tecnico = f"""
-    Datos reales extraídos del código HTML de {web}:
-    - Plataforma detectada: {datos_web['platform']}
-    - Título de la página: {datos_web['title']}
-    - Meta descripción: {datos_web['meta_description'] or 'No tiene meta descripción configurada'}
-    - Botón de carrito detectado en la home: {'Sí' if datos_web['has_cart'] else 'No detectado'}
-    - Flujo/enlace de checkout detectado: {'Sí' if datos_web['has_checkout'] else 'No detectado'}
-    - Pasarelas de pago visibles: {', '.join(datos_web['gateways'])}
-    - Fragmento de texto visible en la tienda: {datos_web['snippet'][:900]}
-    """
-
-    dominio_limpio = limpiar_dominio_url(web)
-    link_con_tienda = f"{STREAMLIT_URL}?store={dominio_limpio}" if dominio_limpio else STREAMLIT_URL
-
-    prompt = f"""
-    Sos un especialista en optimización de conversión (CRO) escribiendo un correo de respuesta a {saludo} ({web}), quien pidió recibir el pantallazo gratuito que le ofreciste.
-
-    {contexto_tecnico}
-
-    REGLAS ESTRICTAS DE VERACIDAD:
-    - Basate ÚNICAMENTE en los datos reales extraídos arriba.
-    - NO inventes problemas ni supongas cosas que no surjan de esos datos. Si un dato aparece como "No detectado" o vacío, señalalo como una oportunidad concreta de mejora.
-
-    REGLAS ESTRICTAS DE FORMATO Y LEGIBILIDAD:
-    - Redactá TODO el correo (saludo, viñetas, cierre y despedida) en {idioma} natural, cercano y profesional (tono directo de colega, sin sonar robótico).
-    - Usá doble salto de línea (párrafos bien separados) entre cada idea para que sea muy fácil y cómodo de leer.
-    - Estructurá el correo exactamente así:
-
-    Párrafo 1: Saludo breve en {idioma} agradeciendo la respuesta y presentando 3 puntos concretos sobre {web}.
-
-    [Línea en blanco]
-
-    Lista con 3 viñetas (usando "• ") separadas entre sí por una línea en blanco, cubriendo en este orden exacto:
-    1) Estado de la home, título y meta descripción / claridad del catálogo.
-    2) Visibilidad del carrito y acceso al flujo de checkout.
-    3) Pasarelas de pago y fricción general para comprar.
-    Cada viñeta debe tener un título corto seguido de dos puntos y una explicación de máximo 2 líneas basada en los datos reales.
-
-    [Línea en blanco]
-
-    Párrafo de cierre en {idioma}: Invitalo sin presión a acceder al informe técnico completo en PDF y a la guía de implementación con plantillas y snippets listos para usar, incluyendo exactamente este enlace: {link_con_tienda}
-
-    [Línea en blanco]
-
-    Despedida breve en una sola línea redactada en {idioma} (por ejemplo, si el idioma es inglés, algo como "Best regards" o "Have a great day", sin signos de puntuación finales ni texto extra).
-
-    Devolvé ÚNICAMENTE el cuerpo del correo listo para enviar (sin asunto ni comillas).
-    """
-
-    try:
-        chat_completion = groq_client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
-            model="llama-3.3-70b-versatile",
-            temperature=0.2,
-            max_tokens=650,
-        )
-        cuerpo_teaser = chat_completion.choices[0].message.content.strip()
-    except Exception:
-        chat_completion = groq_client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
-            model="qwen/qwen3.8-27b",
-            temperature=0.2,
-            max_tokens=650,
-        )
-        cuerpo_teaser = chat_completion.choices[0].message.content.strip()
-
-    if link_con_tienda not in cuerpo_teaser:
-        cuerpo_teaser = f"{cuerpo_teaser}\n\n{link_con_tienda}"
-
-    cuerpo_teaser = re.sub(r"\n{3,}", "\n\n", cuerpo_teaser).strip()
-    asunto_respuesta = asunto_original if asunto_original.lower().startswith("re:") else f"Re: {asunto_original or f'consulta sobre {web}'}"
-
-    print(f"   ✉️ Enviando pre-informe real y formateado a {email_dest}...")
-    exito = enviar_correo_smtp(email_dest, asunto_respuesta, cuerpo_teaser)
-    return "ENVIADO" if exito else "ERROR_SMTP"
-
-
-def extraer_cuerpo_mensaje(msg):
-    """Extrae el texto legible de un mensaje de correo (priorizando text/plain y con fallback a text/html)."""
-    cuerpo_cliente = ""
-    if msg.is_multipart():
-        for part in msg.walk():
-            content_type = part.get_content_type()
-            disp = str(part.get("Content-Disposition") or "").lower()
-            if "attachment" in disp:
-                continue
-            if content_type == "text/plain":
-                payload = part.get_payload(decode=True)
-                if payload:
-                    charset = part.get_content_charset() or "utf-8"
-                    cuerpo_cliente = payload.decode(charset, errors="ignore").strip()
-                    if cuerpo_cliente:
-                        return cuerpo_cliente
-
-        for part in msg.walk():
-            content_type = part.get_content_type()
-            disp = str(part.get("Content-Disposition") or "").lower()
-            if "attachment" in disp:
-                continue
-            if content_type == "text/html":
-                payload = part.get_payload(decode=True)
-                if payload:
-                    charset = part.get_content_charset() or "utf-8"
-                    raw_html = payload.decode(charset, errors="ignore")
-                    cuerpo_cliente = BeautifulSoup(raw_html, "html.parser").get_text(" ", strip=True)
-                    if cuerpo_cliente:
-                        return cuerpo_cliente
-    else:
-        payload = msg.get_payload(decode=True)
-        if payload:
-            charset = msg.get_content_charset() or "utf-8"
-            cuerpo_cliente = payload.decode(charset, errors="ignore").strip()
-
-    return cuerpo_cliente
-
-
-def clasificar_respuesta_cliente(texto_respuesta):
-    """Usa IA para clasificar la intención del cliente en la respuesta recibida."""
-    prompt = f"""
-    Clasifica el siguiente mensaje de correo electrónico recibido de un prospecto de B2B.
-    Responde ÚNICAMENTE con un JSON válido con una clave "categoria" que tenga uno de estos tres valores exactos:
-    - "Interesado" (si dijo que sí, confirmó con algo breve como "dale", "dale!", "ok", "sí", "si", "de una", "mandá", "pasame", pidió el pantallazo/apuntes, mostró interés o hizo una pregunta para avanzar).
-    - "No interesado" (si dijo que no le interesa, pidió que no le escribas o rechazó la oferta).
-    - "Otro" (si es una respuesta ambigua, fuera de contexto, automática o de rebote).
-
-    Mensaje del cliente:
-    \"\"\"{texto_respuesta}\"\"\"
-    """
-    try:
-        chat_completion = groq_client.chat.completions.create(
-            messages=[{"role": "user", "content": prompt}],
-            model="qwen/qwen3.8-27b",
-            temperature=0.1,
-            response_format={"type": "json_object"}
-        )
-        resultado = json.loads(chat_completion.choices[0].message.content)
-        categoria = resultado.get("categoria", "Otro")
-        return categoria if categoria in ["Interesado", "No interesado", "Otro"] else "Otro"
-    except Exception:
-        return "Otro"
-
-
-def detectar_respuestas_gmail(filas):
-    """Revisa storecheckai@gmail.com vía IMAP, clasifica la respuesta y dispara el teaser si hay interés."""
-    if not GMAIL_APP_PASSWORD:
-        print("⚠️ No se detectó GMAIL_APP_PASSWORD. Se omite el chequeo automático de bandeja.\n")
-        return 0
-
-    pendientes = {}
-    for f in filas:
-        est = get_col(f, "estado")
-        em = get_col(f, "email").lower()
-        if est in ["Invitacion enviada", "Seguimiento enviado"] and em:
-            pendientes[em] = f
-
-    if not pendientes:
-        return 0
-
-    marcados = 0
-    try:
-        print(f"📥 Conectando a {GMAIL_USER} para verificar respuestas recibidas...")
-        mail = imaplib.IMAP4_SSL("imap.gmail.com")
-        mail.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-        mail.select("inbox")
-
-        for email_prospecto, fila in pendientes.items():
-            status, messages = mail.search(None, f'(FROM "{email_prospecto}")')
-            if status == "OK" and messages[0]:
-                msg_ids = messages[0].split()
-                _, msg_data = mail.fetch(msg_ids[-1], "(RFC822)")
-                raw_email = msg_data[0][1]
-                msg = email.message_from_bytes(raw_email)
-
-                fecha_mail_str = msg.get("Date")
-                fecha_envio_str = get_col(fila, "fecha")[:10]
-
-                es_posterior = True
-                if fecha_mail_str and fecha_envio_str:
-                    try:
-                        dt_mail = parsedate_to_datetime(fecha_mail_str).replace(tzinfo=None)
-                        dt_envio = datetime.strptime(fecha_envio_str, "%Y-%m-%d")
-                        es_posterior = dt_mail >= dt_envio
-                    except Exception:
-                        es_posterior = True
-
-                if es_posterior:
-                    cuerpo_cliente = extraer_cuerpo_mensaje(msg)
-                    intencion = clasificar_respuesta_cliente(cuerpo_cliente)
-
-                    if intencion == "Interesado":
-                        print(f"🔥 ¡Interés detectado de {email_prospecto}! Verificando tienda real...")
-                        nombre = get_col(fila, "nombre")
-                        web = get_col(fila, "web")
-                        pais = get_col(fila, "pais", "Argentina")
-                        asunto = get_col(fila, "asunto")
-
-                        resultado_teaser = generar_y_enviar_teaser(nombre, email_prospecto, web, pais, asunto)
-
-                        if resultado_teaser == "ENVIADO":
-                            set_col(fila, "estado", "Teaser enviado")
-                            set_col(fila, "fecha", datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-                            print(f"🚀 ¡Pre-informe enviado con éxito a {email_prospecto}! Estado: Teaser enviado")
-                        elif resultado_teaser == "WEB_INACCESIBLE":
-                            set_col(fila, "estado", "Interesado - Revisar web manual")
-                            print(f"⚠️ {email_prospecto} está interesado, pero {web} no respondió. Queda marcado para revisión manual.")
-                        else:
-                            set_col(fila, "estado", "Interesado - Error envio teaser")
-                            print(f"⚠️ Hubo interés de {email_prospecto}, pero falló el envío SMTP.")
-
-                    elif intencion == "No interesado":
-                        set_col(fila, "estado", "No interesado")
-                        print(f"❌ {email_prospecto} desestimó la oferta. Estado: No interesado")
-                    else:
-                        set_col(fila, "estado", "Respondido")
-                        print(f"💬 Respuesta recibida de {email_prospecto}. Estado: Respondido (revisión manual)")
-
-                    marcados += 1
-
-        mail.logout()
-    except Exception as e:
-        print(f"⚠️ Error al revisar Gmail por IMAP: {e}")
-
-    print(f"📊 Chequeo de bandeja finalizado: {marcados} respuestas procesadas.\n")
-    return marcados
-
-
-def enviar_correo_smtp(destinatario, asunto, cuerpo):
-    """Envía el correo mediante el servidor SMTP oficial de Gmail usando TLS."""
-    try:
-        msg = MIMEMultipart()
-        msg['From'] = formataddr(("StoreCheck AI", GMAIL_USER))
-        msg['To'] = destinatario
-        msg['Subject'] = asunto
-        msg.attach(MIMEText(cuerpo, 'plain', 'utf-8'))
-
-        server = smtplib.SMTP('smtp.gmail.com', 587)
-        server.starttls()
-        server.login(GMAIL_USER, GMAIL_APP_PASSWORD)
-        server.sendmail(GMAIL_USER, destinatario, msg.as_string())
-        server.quit()
-        return True
-    except Exception as e:
-        print(f"[-] Error al enviar correo por SMTP a {destinatario}: {e}")
+def es_email_valido(mail_limpio, patron_email, basura):
+    if not re.match(patron_email, mail_limpio):
         return False
+    if any(b in mail_limpio for b in basura):
+        return False
+    if mail_limpio.startswith(("noreply@", "no-reply@", "mailer-daemon@", "postmaster@")):
+        return False
+    return True
 
 
-def redactar_seguimiento_inteligente(nombre, web, pais):
-    idioma = obtener_idioma_por_pais(pais)
-    saludo_nombre = nombre if nombre and nombre.lower() not in ["equipo", "team", ""] else "equipo"
-
-    prompt = f"""
-    Eres un consultor experto en optimización de conversión (CRO) de tiendas online.
-    Redacta un ÚNICO correo de seguimiento (follow-up) muy breve, cero agresivo y amable, dirigido a {saludo_nombre} de la tienda {web}.
-    Contexto: Hace 4 días le enviaste un correo ofreciéndole un pantallazo rápido y gratuito con puntos de mejora para su tienda, pero no respondió.
-    
-    Requisitos estrictos:
-    1. Idioma: Redacta TODO (asunto y cuerpo) en {idioma} natural y profesional.
-    2. Tono: Casual, de colega a colega, asumiendo que estuvo ocupado con el movimiento de la semana. Cero presión.
-    3. Contenido: Dile que escribes rápido por si el correo anterior se perdió. Menciona que sigues teniendo a mano los apuntes sobre mejoras de conversión para {web}. Si le sirve que se los pases (sin compromiso), pídele que responda con un simple "sí". Si están a fuego con otras prioridades, deséale éxitos.
-    4. Longitud: Máximo 45 palabras en el cuerpo.
-    5. Formato de salida: Devuelve ÚNICAMENTE un JSON válido con las claves "asunto" y "cuerpo". Sin texto adicional.
+def validar_tienda_y_extraer_email(dominio):
     """
+    1) Verifica que el sitio sea una tienda online real (plataforma e-commerce o carrito/checkout activo).
+    2) Si es tienda real, busca emails públicos válidos en la home y páginas de contacto.
+    """
+    headers = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"}
+    patron_email = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
+    patron_busqueda = r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}"
+    basura = ["sentry.io", "wixpress.com", "example.com", "shopify.com", "domain.com", ".png", ".jpg", ".jpeg", ".webp", ".svg"]
 
-    modelos = [
-        "qwen/qwen3.8-27b",
-        "allam-2-7b"
+    # Paso 1: Verificar home para confirmar que es e-commerce real
+    try:
+        resp_home = requests.get(f"https://{dominio}", headers=headers, timeout=8)
+        if resp_home.status_code != 200:
+            return False, None
+    except Exception:
+        return False, None
+
+    html_lower = resp_home.text.lower()
+
+    senales_plataforma = [
+        "cdn.shopify.com",
+        "shopify.theme",
+        "woocommerce",
+        "wc-block",
+        "tiendanube",
+        "nuvemshop",
+        "prestashop",
+        "magento",
+        "vtex",
+        "bigcommerce"
+    ]
+    senales_compra = [
+        "add-to-cart",
+        "add_to_cart",
+        "single_add_to_cart_button",
+        "/cart",
+        "/carrito",
+        "/checkout",
+        "/collections/",
+        "/product/",
+        "/producto/",
+        "añadir al carrito",
+        "agregar al carrito",
+        "adicionar ao carrinho",
+        "ajouter au panier",
+        "in den warenkorb"
     ]
 
-    last_error = None
-    for modelo in modelos:
+    es_tienda = any(s in html_lower for s in senales_plataforma) or sum(1 for s in senales_compra if s in html_lower) >= 2
+    if not es_tienda:
+        return False, None
+
+    # Paso 2: Extraer email empezando por la home ya descargada y luego páginas de contacto
+    paginas_html = [resp_home.text]
+    rutas_contacto = ["/contact", "/contacto", "/pages/contact", "/pages/contacto", "/aviso-legal", "/policies/contact-information"]
+
+    for ruta in rutas_contacto:
         try:
-            chat_completion = groq_client.chat.completions.create(
-                messages=[{"role": "user", "content": prompt}],
-                model=modelo,
-                temperature=0.6,
-                response_format={"type": "json_object"}
-            )
-            return json.loads(chat_completion.choices[0].message.content)
-        except Exception as e:
-            last_error = e
+            r = requests.get(f"https://{dominio}{ruta}", headers=headers, timeout=6)
+            if r.status_code == 200:
+                paginas_html.append(r.text)
+        except Exception:
             continue
 
-    raise Exception(f"No se pudo conectar con ningún modelo de Groq: {last_error}")
+    for html_doc in paginas_html:
+        soup = BeautifulSoup(html_doc, "html.parser")
+        # Buscar primero en enlaces mailto:
+        for a in soup.find_all("a", href=True):
+            href = a["href"].strip()
+            if href.lower().startswith("mailto:"):
+                mail_limpio = href.split(":", 1)[1].split("?")[0].strip().lower()
+                if es_email_valido(mail_limpio, patron_email, basura):
+                    return True, mail_limpio
+
+        # Buscar en el texto visible
+        texto = soup.get_text(" ")
+        encontrados = re.findall(patron_busqueda, texto)
+        for mail in encontrados:
+            mail_limpio = mail.lower().strip()
+            if es_email_valido(mail_limpio, patron_email, basura):
+                return True, mail_limpio
+
+    return True, None
 
 
-def ejecutar_seguimientos():
-    if not os.path.exists(ARCHIVO_HISTORIAL):
-        print(f"❌ No se encontró el archivo '{ARCHIVO_HISTORIAL}'.")
-        return
+def buscar_en_hunter(dominio):
+    """Respaldo con API de Hunter.io si el scraping directo no halló mail"""
+    if not HUNTER_API_KEY:
+        return None, None
+    url = f"https://api.hunter.io/v2/domain-search?domain={dominio}&api_key={HUNTER_API_KEY}&limit=1"
+    try:
+        r = requests.get(url, timeout=8)
+        if r.status_code == 200:
+            emails = r.json().get("data", {}).get("emails", [])
+            if emails:
+                dato = emails[0]
+                nombre = dato.get("first_name") or "Equipo"
+                return nombre, dato.get("value")
+    except Exception:
+        pass
+    return None, None
 
-    with open(ARCHIVO_HISTORIAL, mode="r", encoding="utf-8-sig") as f:
-        reader = csv.DictReader(f)
-        columnas = reader.fieldnames
-        filas = list(reader)
 
-    if not filas:
-        print("📭 El historial está vacío.")
-        return
+def ejecutar_recoleccion(resultados_por_pais=5):
+    webs_vistas = cargar_webs_existentes()
+    emails_vistos = set()
+    print("🚀 Iniciando recolección autónoma global de tiendas (5 continentes)...\n")
 
-    respuestas_nuevas = detectar_respuestas_gmail(filas)
+    with DDGS() as ddgs:
+        for obj in OBJETIVOS_GLOBALES:
+            pais = obj["pais"]
+            query = obj["query"]
+            print(f"🌍 Rastreando tiendas en {pais}...")
 
-    ahora = datetime.now()
-    seguimientos_enviados = 0
-
-    print(f"🔍 Buscando prospectos sin respuesta con >= {DIAS_ESPERA} días de espera...\n")
-
-    for fila in filas:
-        estado = get_col(fila, "estado")
-        fecha_str = get_col(fila, "fecha")
-        email_dest = get_col(fila, "email")
-        web = get_col(fila, "web")
-        nombre = get_col(fila, "nombre") or get_col(fila, "contacto")
-        pais = get_col(fila, "pais", "Estados Unidos")
-
-        if estado != "Invitacion enviada" or not fecha_str:
-            continue
-
-        try:
-            fecha_envio = datetime.strptime(fecha_str[:10], "%Y-%m-%d")
-        except ValueError:
-            print(f"⚠️ Formato de fecha inválido para {email_dest}: {fecha_str}")
-            continue
-
-        dias_transcurridos = (ahora - fecha_envio).days
-
-        if dias_transcurridos >= DIAS_ESPERA:
-            print(f"⏳ {web} ({email_dest}) lleva {dias_transcurridos} días sin responder. Preparando seguimiento...")
             try:
-                ia = redactar_seguimiento_inteligente(nombre, web, pais)
-                asunto = ia.get("asunto", f"Re: Una consulta sobre {web}")
-                cuerpo = ia.get("cuerpo", "")
+                resultados = list(ddgs.text(query, max_results=resultados_por_pais))
+            except Exception as e:
+                print(f"⚠️ Error en búsqueda para {pais}: {e}")
+                continue
 
-                print(f"👤 Idioma: {obtener_idioma_por_pais(pais)} | Asunto: {asunto}")
-                print(f"✉️ Mensaje:\n{cuerpo}\n")
+            for res in resultados:
+                url = res.get("href", "")
+                dominio = limpiar_dominio(url)
 
-                exito = enviar_correo_smtp(email_dest, asunto, cuerpo)
+                if not dominio or dominio in webs_vistas:
+                    continue
+                webs_vistas.add(dominio)
 
-                if exito:
-                    set_col(fila, "estado", "Seguimiento enviado")
-                    set_col(fila, "fecha", ahora.strftime("%Y-%m-%d %H:%M:%S"))
-                    seguimientos_enviados += 1
-                    print(f"✅ Seguimiento enviado a {email_dest}.\n")
+                print(f"   🔎 Analizando {dominio}...")
+                es_tienda, email = validar_tienda_y_extraer_email(dominio)
+
+                if not es_tienda:
+                    print(f"   ⏭️ Descartado ({dominio} no parece una tienda con carrito activo)")
+                    time.sleep(1.0)
+                    continue
+
+                nombre = "Equipo"
+                if not email:
+                    nombre_hunter, email_hunter = buscar_en_hunter(dominio)
+                    if email_hunter:
+                        nombre = nombre_hunter
+                        email = email_hunter
+
+                if email:
+                    email_norm = email.strip().lower()
+                    if email_norm in emails_vistos:
+                        print(f"   ⏭️ Email duplicado en esta corrida ({email_norm})")
+                        continue
+                    emails_vistos.add(email_norm)
+                    print(f"   ✅ ¡Tienda verificada y lead capturado! {email_norm} ({pais})")
+                    guardar_lead_maestro(nombre, email_norm, dominio, pais)
                 else:
-                    print(f"❌ Falló el envío SMTP de seguimiento a {email_dest}.\n")
+                    print(f"   ❌ Tienda verificada, pero sin email público visible en {dominio}")
 
                 time.sleep(1.5)
 
-            except Exception as e:
-                print(f"❌ Error procesando seguimiento para {email_dest}: {e}\n")
-
-    if respuestas_nuevas > 0 or seguimientos_enviados > 0:
-        with open(ARCHIVO_HISTORIAL, mode="w", newline="", encoding="utf-8-sig") as f:
-            writer = csv.DictWriter(f, fieldnames=columnas)
-            writer.writeheader()
-            writer.writerows(filas)
-        print(f"✅ Historial actualizado ({respuestas_nuevas} respuestas procesadas, {seguimientos_enviados} seguimientos enviados).")
-    else:
-        print("✅ Proceso finalizado. Sin novedades ni seguimientos pendientes por hoy.")
+    print(f"\n🏁 Recolección terminada. Base actualizada en '{ARCHIVO_MAESTRO}'.")
 
 
 if __name__ == "__main__":
-    ejecutar_seguimientos()
+    ejecutar_recoleccion(resultados_por_pais=5)

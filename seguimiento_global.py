@@ -187,11 +187,11 @@ def generar_y_enviar_teaser(nombre, email_dest, web, pais, asunto_original):
     - NO inventes problemas ni supongas cosas que no surjan de esos datos. Si un dato aparece como "No detectado" o vacío, señalalo como una oportunidad concreta de mejora.
 
     REGLAS ESTRICTAS DE FORMATO Y LEGIBILIDAD:
-    - Redactá en {idioma} natural, cercano y profesional (tono directo de colega, sin sonar robótico).
+    - Redactá TODO el correo (saludo, viñetas, cierre y despedida) en {idioma} natural, cercano y profesional (tono directo de colega, sin sonar robótico).
     - Usá doble salto de línea (párrafos bien separados) entre cada idea para que sea muy fácil y cómodo de leer.
     - Estructurá el correo exactamente así:
 
-    Párrafo 1: Saludo breve agradeciendo la respuesta (ej: "¡Hola {saludo}! Gracias por responder. Dale, te paso 3 puntos concretos que vi:").
+    Párrafo 1: Saludo breve en {idioma} agradeciendo la respuesta y presentando 3 puntos concretos sobre {web}.
 
     [Línea en blanco]
 
@@ -203,11 +203,11 @@ def generar_y_enviar_teaser(nombre, email_dest, web, pais, asunto_original):
 
     [Línea en blanco]
 
-    Párrafo de cierre: Invitalo sin presión a acceder al informe técnico completo en PDF y a la guía de implementación con snippets y plantillas (ej: "Si querés ver el informe técnico completo, y sumar la guía de implementación con plantillas y snippets listos para implementar —a muy bajo costo—, podés generarlos al instante acá: {link_con_tienda}").
+    Párrafo de cierre en {idioma}: Invitalo sin presión a acceder al informe técnico completo en PDF y a la guía de implementación con plantillas y snippets listos para usar, incluyendo exactamente este enlace: {link_con_tienda}
 
     [Línea en blanco]
 
-    Despedida breve en una sola línea (SIN NINGUNA COMA AL FINAL, por ejemplo escribí exactamente "¡Saludos, y que tengas un gran día!" sin signos de puntuación finales).
+    Despedida breve en una sola línea redactada en {idioma} (por ejemplo, si el idioma es inglés, algo como "Best regards" o "Have a great day", sin signos de puntuación finales ni texto extra).
 
     Devolvé ÚNICAMENTE el cuerpo del correo listo para enviar (sin asunto ni comillas).
     """
@@ -229,6 +229,10 @@ def generar_y_enviar_teaser(nombre, email_dest, web, pais, asunto_original):
         )
         cuerpo_teaser = chat_completion.choices[0].message.content.strip()
 
+    if link_con_tienda not in cuerpo_teaser:
+        cuerpo_teaser = f"{cuerpo_teaser}\n\n{link_con_tienda}"
+
+    cuerpo_teaser = re.sub(r"\n{3,}", "\n\n", cuerpo_teaser).strip()
     asunto_respuesta = asunto_original if asunto_original.lower().startswith("re:") else f"Re: {asunto_original or f'consulta sobre {web}'}"
 
     print(f"   ✉️ Enviando pre-informe real y formateado a {email_dest}...")

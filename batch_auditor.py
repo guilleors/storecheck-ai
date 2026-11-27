@@ -6,6 +6,7 @@ from email.mime.text import MIMEText
 from email.utils import formataddr
 import time
 import random
+import unicodedata
 from datetime import datetime
 from groq import Groq
 import config
@@ -14,6 +15,43 @@ import config
 client = Groq(api_key=config.GROQ_API_KEY)
 
 HISTORIAL_FILE = "historial_invitaciones_globales.csv"
+
+
+def normalizar_texto(texto):
+    if not texto:
+        return ""
+    return "".join(
+        c for c in unicodedata.normalize("NFD", str(texto))
+        if unicodedata.category(c) != "Mn"
+    ).lower().strip()
+
+
+def obtener_idioma_por_pais(pais):
+    p = normalizar_texto(pais)
+    if any(k in p for k in ["argentina", "mexico", "espana", "colombia", "chile", "peru", "uruguay", "ecuador", "panama", "costa rica", "guatemala"]):
+        return "Español"
+    elif any(k in p for k in ["brasil", "brazil", "portugal"]):
+        return "Portugués"
+    elif any(k in p for k in ["francia", "france", "belgica", "belgium"]):
+        return "Francés"
+    elif any(k in p for k in ["italia", "italy"]):
+        return "Italiano"
+    elif any(k in p for k in ["alemania", "germany", "austria", "suiza", "switzerland"]):
+        return "Alemán"
+    else:
+        return "Inglés"
+
+
+def obtener_asunto_por_idioma(idioma, web):
+    asuntos = {
+        "Español": f"consulta sobre {web}",
+        "Portugués": f"dúvida sobre {web}",
+        "Francés": f"question concernant {web}",
+        "Italiano": f"domanda su {web}",
+        "Alemán": f"kurze Frage zu {web}",
+        "Inglés": f"quick question about {web}",
+    }
+    return asuntos.get(idioma, f"quick question about {web}")
 
 
 def cargar_historial():
@@ -41,6 +79,7 @@ def extraer_primer_nombre(nombre_crudo):
 def registrar_enviado(nombre, email, web, pais, asunto):
     print(f"DEBUG: Intentando abrir/crear {HISTORIAL_FILE}...")
     file_exists = os.path.exists(HISTORIAL_FILE) and os.path.getsize(HISTORIAL_FILE) > 0
+    idioma = obtener_idioma_por_pais(pais)
     with open(HISTORIAL_FILE, mode="a", encoding="utf-8-sig", newline="") as f:
         writer = csv.writer(f)
         if not file_exists:
@@ -48,28 +87,30 @@ def registrar_enviado(nombre, email, web, pais, asunto):
             writer.writerow(["fecha", "nombre", "email", "web", "pais", "idioma", "asunto", "estado"])
 
         fecha_actual = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        writer.writerow([fecha_actual, nombre, email, web, pais, "Español", asunto, "Invitacion enviada"])
+        writer.writerow([fecha_actual, nombre, email, web, pais, idioma, asunto, "Invitacion enviada"])
     print(f"DEBUG: ¡Escritura completada con éxito en {HISTORIAL_FILE}!")
 
 
 def generar_correo(nombre, web, pais):
     saludo = extraer_primer_nombre(nombre)
+    idioma = obtener_idioma_por_pais(pais)
 
     system_prompt = (
-        "Sos un desarrollador web independiente escribiendo un mail de contacto en frío. "
-        "Tu única tarea es adaptar el texto de ejemplo al nombre y la web del prospecto, "
-        "manteniendo exactamente el mismo tono educado, directo y natural de Argentina ('Mirá, me tomé el atrevimiento...'). "
+        f"Sos un desarrollador web independiente escribiendo un mail de contacto en frío en {idioma}. "
+        "Tu única tarea es adaptar el texto de ejemplo al nombre, la web y el idioma correspondiente al país del prospecto, "
+        "manteniendo un tono educado, directo, natural y sin sonar robótico. "
         "No inventes párrafos nuevos ni cambies la estructura."
     )
 
     user_prompt = (
-        f"Tomá como base este texto exacto y adaptalo completo para {saludo} que está a cargo de {web} (ubicado en {pais}):\n\n"
+        f"Redactá TODO el correo en {idioma} natural y profesional, tomando como base la idea y estructura de este texto "
+        f"para {saludo}, a cargo de {web} (ubicado en {pais}):\n\n"
         f"Hola, {saludo}, ¿cómo estás?\n"
         f"Me tomé el atrevimiento de explorar {web} y noté algunos detalles de fricción en el checkout que seguramente estén interfiriendo en el flujo de ventas.\n"
         f"¿Podrá interesarte, sin compromiso, un pantallazo rápido con un par de ideas para corregirlo?\n"
         f"No dudes en responderme y te lo envío con gusto.\n"
         f"Un abrazo\n\n"
-        "Devolvé únicamente el correo listo para enviar con esos datos:"
+        "Devolvé únicamente el correo listo para enviar (sin asunto ni comillas):"
     )
 
     modelos = [
@@ -159,7 +200,8 @@ def ejecutar_campana():
             if not email_norm or email_norm in enviados:
                 continue
 
-            print(f"\nGenerando correo para {nombre} ({email})...")
+            idioma = obtener_idioma_por_pais(pais)
+            print(f"\nGenerando correo para {nombre} ({email}) | País: {pais} | Idioma: {idioma}...")
             try:
                 cuerpo = generar_correo(nombre, web, pais)
             except Exception as e:
@@ -170,7 +212,7 @@ def ejecutar_campana():
             print(cuerpo)
             print("="*40 + "\n")
 
-            asunto = f"consulta sobre {web}"
+            asunto = obtener_asunto_por_idioma(idioma, web)
 
             if enviar_email(email, asunto, cuerpo):
                 registrar_enviado(nombre, email, web, pais, asunto)

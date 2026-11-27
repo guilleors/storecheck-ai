@@ -68,6 +68,44 @@ def load_last_store_url():
     return ""
 
 
+def resolve_language_name(raw_lang):
+    """Normaliza el parámetro ?lang=... al nombre exacto de REPORT_LANGUAGES."""
+    if not raw_lang:
+        return None
+    cleaned = str(raw_lang).strip()
+    if cleaned in REPORT_LANGUAGES:
+        return cleaned
+
+    lower = cleaned.lower()
+    aliases = {
+        "es": "Español",
+        "español": "Español",
+        "espanol": "Español",
+        "spanish": "Español",
+        "en": "English",
+        "english": "English",
+        "inglés": "English",
+        "ingles": "English",
+        "pt": "Português",
+        "português": "Português",
+        "portugues": "Português",
+        "portuguese": "Português",
+        "it": "Italiano",
+        "italiano": "Italiano",
+        "italian": "Italiano",
+        "fr": "Français",
+        "français": "Français",
+        "francais": "Français",
+        "french": "Français",
+        "zh": "中文 (Chinese)",
+        "chinese": "中文 (Chinese)",
+        "chino": "中文 (Chinese)",
+        "中文": "中文 (Chinese)",
+        "中文 (chinese)": "中文 (Chinese)",
+    }
+    return aliases.get(lower)
+
+
 # --- MANEJADOR DE PÁGINAS LEGALES INTERNAS ---
 legal_page = st.query_params.get("page", "main")
 
@@ -102,11 +140,12 @@ elif legal_page == "privacy":
     st.stop()
 
 
-def build_checkout_url(base_checkout_url, redirect_base_url, store_url, extra_params=""):
+def build_checkout_url(base_checkout_url, redirect_base_url, store_url, extra_params="", lang_name=None):
     normalized_store = normalize_store_url(store_url)
     encoded_store = quote(normalized_store, safe="") if normalized_store else ""
     store_query = f"&store={encoded_store}" if encoded_store else ""
-    full_redirect = f"{redirect_base_url}{extra_params}{store_query}"
+    lang_query = f"&lang={quote(lang_name, safe='')}" if lang_name else ""
+    full_redirect = f"{redirect_base_url}{extra_params}{store_query}{lang_query}"
     return f"{base_checkout_url}?checkout[redirect_url]={quote(full_redirect, safe='')}"
 
 
@@ -872,20 +911,21 @@ def render_audit_download_button(
             file_name="StoreCheck_AI_Corporate_Report.pdf",
             mime="application/pdf",
             use_container_width=True,
-            key=button_key,
+            key=f"{button_key}_{report_lang}",
         )
 
 
 def render_playbook_section(
     store_url,
-    report_lang,
+    default_lang,
     is_playbook_already_paid,
     redirect_base_url,
+    lang_selector_key,
     scraped_data=None,
     metrics=None,
     comp_info="",
 ):
-    """Muestra la sección del Playbook Pro ($150 USD) y su descarga o enlace de pago."""
+    """Muestra la sección del Playbook Pro ($150 USD), su selector de idioma y descarga o pago."""
     st.markdown("---")
     st.markdown("### 🗺️ Playbook de Implementación Pro ($150 USD)")
     st.info(
@@ -894,13 +934,25 @@ def render_playbook_section(
     )
 
     if is_playbook_already_paid:
+        base_lang = (
+            st.session_state.get("playbook_pdf_lang")
+            if st.session_state.get("playbook_pdf_lang") in REPORT_LANGUAGES
+            else (default_lang if default_lang in REPORT_LANGUAGES else "Español")
+        )
+        playbook_lang = st.selectbox(
+            "Seleccioná el idioma para tu Playbook Pro en PDF:",
+            REPORT_LANGUAGES,
+            index=REPORT_LANGUAGES.index(base_lang),
+            key=lang_selector_key,
+        )
+
         st.success(
             "🎉 ¡Pago del Playbook Pro verificado con éxito! "
             "Tu guía técnica de implementación y snippets a medida ya están listos."
         )
         pdf_playbook_bytes = build_single_pdf(
             store_url=store_url,
-            report_lang=report_lang,
+            report_lang=playbook_lang,
             doc_type="playbook",
             scraped_data=scraped_data,
             metrics=metrics,
@@ -913,7 +965,7 @@ def render_playbook_section(
                 file_name="StoreCheck_AI_Playbook_Pro.pdf",
                 mime="application/pdf",
                 use_container_width=True,
-                key=f"dl_playbook_only_{store_url}",
+                key=f"dl_playbook_only_{store_url}_{playbook_lang}",
             )
     else:
         playbook_checkout_url = build_checkout_url(
@@ -921,6 +973,7 @@ def render_playbook_section(
             redirect_base_url,
             store_url,
             "?success=true&success_playbook=true",
+            lang_name=default_lang,
         )
 
         st.link_button(
@@ -930,18 +983,24 @@ def render_playbook_section(
         )
 
 
-# --- CAPTURAR URL DESDE QUERY PARAMS O ÚLTIMA TIENDA GUARDADA ---
+# --- CAPTURAR URL E IDIOMA DESDE QUERY PARAMS O ÚLTIMA TIENDA GUARDADA ---
 query_store = normalize_store_url(st.query_params.get("store", ""))
+query_lang = resolve_language_name(st.query_params.get("lang", ""))
+
 if query_store and "store_url_input" not in st.session_state:
     st.session_state["store_url_input"] = query_store
 if query_store and "store_url" not in st.session_state:
     st.session_state["store_url"] = query_store
     save_last_store_url(query_store)
 
+if query_lang and "ui_language_select" not in st.session_state:
+    st.session_state["ui_language_select"] = query_lang
+
 # --- BARRA LATERAL ---
 ui_language = st.sidebar.selectbox(
     "🌐 Idioma de la Interfaz / UI Language",
     REPORT_LANGUAGES,
+    key="ui_language_select",
 )
 
 enable_comparison = st.sidebar.checkbox("⚔️ Modo Comparación (Tu tienda vs. Competencia)", value=False)
@@ -1316,9 +1375,16 @@ if has_session_audit:
     st.markdown(f"### {t['full_report_title']}")
     st.info(t["full_report_info"])
 
+    base_audit_lang = (
+        st.session_state.get("audit_pdf_lang")
+        if st.session_state.get("audit_pdf_lang") in REPORT_LANGUAGES
+        else (ui_language if ui_language in REPORT_LANGUAGES else "Español")
+    )
+
     report_language = st.selectbox(
         t["report_lang_label"],
         REPORT_LANGUAGES,
+        index=REPORT_LANGUAGES.index(base_audit_lang),
         key="report_lang_session",
     )
 
@@ -1342,9 +1408,10 @@ if has_session_audit:
 
         render_playbook_section(
             store_url=active_store_url,
-            report_lang=report_language,
+            default_lang=report_language,
             is_playbook_already_paid=is_playbook_paid,
             redirect_base_url=app_redirect_base,
+            lang_selector_key=f"playbook_lang_session_{active_store_url}",
             scraped_data=st.session_state["scraped_data"],
             metrics=(health, seo, speed, mobile),
             comp_info=comp_info_str,
@@ -1356,6 +1423,7 @@ if has_session_audit:
             app_redirect_base,
             active_store_url,
             "?success=true",
+            lang_name=report_language,
         )
 
         st.link_button(
@@ -1375,51 +1443,57 @@ elif is_paid or is_playbook_paid:
     )
 
     default_lang = (
-        st.session_state.get("playbook_pdf_lang")
-        if is_playbook_paid and st.session_state.get("playbook_pdf_lang") in REPORT_LANGUAGES
+        query_lang
+        if query_lang in REPORT_LANGUAGES
         else (
             st.session_state.get("audit_pdf_lang")
             if st.session_state.get("audit_pdf_lang") in REPORT_LANGUAGES
             else (ui_language if ui_language in REPORT_LANGUAGES else "Español")
         )
     )
-    default_lang_idx = REPORT_LANGUAGES.index(default_lang)
-
-    target_lang = st.selectbox(
-        t["report_lang_label"],
-        REPORT_LANGUAGES,
-        index=default_lang_idx,
-        key="report_lang_return",
-    )
 
     if target_store_url:
         if is_playbook_paid:
             render_playbook_section(
                 store_url=target_store_url,
-                report_lang=target_lang,
+                default_lang=default_lang,
                 is_playbook_already_paid=True,
                 redirect_base_url=app_redirect_base,
+                lang_selector_key=f"playbook_lang_return_{target_store_url}",
             )
             if "audit_pdf_bytes" in st.session_state and st.session_state.get("audit_pdf_store") == target_store_url:
                 st.markdown("---")
+                audit_return_lang = st.selectbox(
+                    t["report_lang_label"],
+                    REPORT_LANGUAGES,
+                    index=REPORT_LANGUAGES.index(default_lang),
+                    key=f"audit_lang_from_pb_{target_store_url}",
+                )
                 render_audit_download_button(
                     button_label=t["btn_download_unlocked"],
                     button_key=f"dl_audit_from_pb_{target_store_url}",
                     store_url=target_store_url,
-                    report_lang=target_lang,
+                    report_lang=audit_return_lang,
                 )
         else:
+            audit_return_lang = st.selectbox(
+                t["report_lang_label"],
+                REPORT_LANGUAGES,
+                index=REPORT_LANGUAGES.index(default_lang),
+                key=f"report_lang_return_{target_store_url}",
+            )
             render_audit_download_button(
                 button_label=t["btn_download_unlocked"],
                 button_key=f"dl_audit_return_{target_store_url}",
                 store_url=target_store_url,
-                report_lang=target_lang,
+                report_lang=audit_return_lang,
             )
             render_playbook_section(
                 store_url=target_store_url,
-                report_lang=target_lang,
+                default_lang=audit_return_lang,
                 is_playbook_already_paid=False,
                 redirect_base_url=app_redirect_base,
+                lang_selector_key=f"playbook_lang_upsell_{target_store_url}",
             )
     else:
         st.info("Ingresá la URL de la tienda auditada para generar tu PDF:")

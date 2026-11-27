@@ -15,6 +15,9 @@ import config
 client = Groq(api_key=config.GROQ_API_KEY)
 
 HISTORIAL_FILE = "historial_invitaciones_globales.csv"
+MAX_ENVIOS_POR_TANDA = 15
+PAUSA_MIN_SEG = 45
+PAUSA_MAX_SEG = 90
 
 
 def normalizar_texto(texto):
@@ -159,8 +162,8 @@ def enviar_email(destinatario, asunto, cuerpo):
         return False
 
 
-def ejecutar_campana():
-    print("--- Iniciando barrido de prospectos ---")
+def ejecutar_campana(max_envios=MAX_ENVIOS_POR_TANDA):
+    print(f"--- Iniciando barrido de prospectos (tope de tanda: {max_envios}) ---")
     enviados = cargar_historial()
 
     archivo_prospectos = None
@@ -190,6 +193,10 @@ def ejecutar_campana():
 
         count = 0
         for row in reader:
+            if count >= max_envios:
+                print(f"\n🛑 Se alcanzó el límite de {max_envios} envíos para esta tanda.")
+                break
+
             row_lower = {k.strip().lower(): (v.strip() if v else "") for k, v in row.items() if k}
             email = row_lower.get(email_col, "").strip()
             email_norm = email.lower()
@@ -220,13 +227,14 @@ def ejecutar_campana():
                 print(f"-> ¡Correo enviado con éxito a {email} y registrado en el historial!")
                 count += 1
 
-                pausa_segura = random.randint(20, 45)
-                print(f"⏳ Pausando {pausa_segura} segundos para cuidar la reputación de la cuenta...")
-                time.sleep(pausa_segura)
+                if count < max_envios:
+                    pausa_segura = random.randint(PAUSA_MIN_SEG, PAUSA_MAX_SEG)
+                    print(f"⏳ Pausando {pausa_segura} segundos para cuidar la reputación de la cuenta...")
+                    time.sleep(pausa_segura)
             else:
                 print(f"-> Falló el envío a {email}")
 
-    print(f"\n--- Campaña finalizada. Total correos enviados: {count} ---")
+    print(f"\n--- Campaña finalizada. Total correos enviados en esta tanda: {count} ---")
 
 
 if __name__ == "__main__":
